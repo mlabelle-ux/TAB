@@ -62,11 +62,17 @@ class School(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     color: str = "#4CAF50"
+    type: str = ""  # Primaire, Secondaire, Autre
+    commission: str = ""  # Commission scolaire
+    ville: str = ""  # Ville
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class SchoolCreate(BaseModel):
     name: str
     color: str = "#4CAF50"
+    type: str = ""
+    commission: str = ""
+    ville: str = ""
 
 class Block(BaseModel):
     model_config = ConfigDict(extra="ignore")
