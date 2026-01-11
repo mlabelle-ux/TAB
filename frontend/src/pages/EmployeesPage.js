@@ -96,7 +96,8 @@ export default function EmployeesPage({ employees, onUpdate }) {
       hire_date: new Date().toISOString().split('T')[0],
       phone: '',
       email: '',
-      berline: ''
+      berline: '',
+      is_inactive: false
     });
     setShowModal(true);
   };
@@ -109,7 +110,8 @@ export default function EmployeesPage({ employees, onUpdate }) {
       hire_date: emp.hire_date,
       phone: emp.phone || '',
       email: emp.email || '',
-      berline: emp.berline || ''
+      berline: emp.berline || '',
+      is_inactive: emp.is_inactive || false
     });
     setShowModal(true);
   };
