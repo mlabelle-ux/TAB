@@ -158,9 +158,22 @@ export default function EmployeesPage({ employees, onUpdate }) {
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
             Gestion des employés
-            <Badge variant="secondary">{employees.length}</Badge>
+            <Badge variant="secondary">{activeCount} actifs</Badge>
+            {inactiveCount > 0 && (
+              <Badge variant="outline" className="text-muted-foreground">{inactiveCount} inactifs</Badge>
+            )}
           </CardTitle>
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-2">
+              <Checkbox
+                id="show-inactive"
+                checked={showInactive}
+                onCheckedChange={setShowInactive}
+              />
+              <Label htmlFor="show-inactive" className="text-sm cursor-pointer">
+                Afficher inactifs
+              </Label>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
