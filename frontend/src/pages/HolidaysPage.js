@@ -14,14 +14,18 @@ import {
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { ScrollArea } from '../components/ui/scroll-area';
+import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Plus, Trash2, CalendarOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function HolidaysPage({ holidays, onUpdate }) {
   const [showModal, setShowModal] = useState(false);
+  const [dateMode, setDateMode] = useState('single'); // 'single' or 'range'
   const [formData, setFormData] = useState({
     name: '',
-    date: ''
+    date: '',
+    start_date: '',
+    end_date: ''
   });
 
   const sortedHolidays = [...holidays].sort((a, b) => 
@@ -30,16 +34,54 @@ export default function HolidaysPage({ holidays, onUpdate }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.date) {
-      toast.error('Tous les champs sont requis');
+    if (!formData.name.trim()) {
+      toast.error('Le nom est requis');
+      return;
+    }
+    
+    if (dateMode === 'single' && !formData.date) {
+      toast.error('La date est requise');
+      return;
+    }
+    
+    if (dateMode === 'range' && (!formData.start_date || !formData.end_date)) {
+      toast.error('Les dates de début et fin sont requises');
       return;
     }
 
     try {
-      await createHoliday(formData);
-      toast.success('Jour férié ajouté');
+      if (dateMode === 'single') {
+        // Créer un seul jour férié
+        await createHoliday({ name: formData.name, date: formData.date });
+        toast.success('Jour férié ajouté');
+      } else {
+        // Créer plusieurs jours fériés pour la période
+        const start = new Date(formData.start_date);
+        const end = new Date(formData.end_date);
+        
+        if (start > end) {
+          toast.error('La date de début doit être avant la date de fin');
+          return;
+        }
+        
+        let count = 0;
+        let current = new Date(start);
+        while (current <= end) {
+          // Exclure les weekends
+          if (current.getDay() !== 0 && current.getDay() !== 6) {
+            await createHoliday({ 
+              name: formData.name, 
+              date: current.toISOString().split('T')[0] 
+            });
+            count++;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+        toast.success(`${count} jour(s) férié(s) ajouté(s)`);
+      }
+      
       setShowModal(false);
-      setFormData({ name: '', date: '' });
+      setFormData({ name: '', date: '', start_date: '', end_date: '' });
       onUpdate();
     } catch (error) {
       toast.error('Erreur lors de l\'ajout');
@@ -142,16 +184,67 @@ export default function HolidaysPage({ holidays, onUpdate }) {
                 data-testid="holiday-name-input"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="date">Date *</Label>
-              <Input
-                id="date"
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                data-testid="holiday-date-input"
-              />
+            
+            <div className="space-y-3">
+              <Label>Type de sélection</Label>
+              <RadioGroup value={dateMode} onValueChange={setDateMode} className="flex gap-4">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="single" id="single" />
+                  <Label htmlFor="single" className="cursor-pointer font-normal">
+                    Journée unique
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="range" id="range" />
+                  <Label htmlFor="range" className="cursor-pointer font-normal">
+                    Période (plusieurs jours)
+                  </Label>
+                </div>
+              </RadioGroup>
             </div>
+            
+            {dateMode === 'single' ? (
+              <div className="space-y-2">
+                <Label htmlFor="date">Date *</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  data-testid="holiday-date-input"
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="start_date">Date de début *</Label>
+                  <Input
+                    id="start_date"
+                    type="date"
+                    value={formData.start_date}
+                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                    data-testid="holiday-start-date-input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="end_date">Date de fin *</Label>
+                  <Input
+                    id="end_date"
+                    type="date"
+                    value={formData.end_date}
+                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                    data-testid="holiday-end-date-input"
+                  />
+                </div>
+              </div>
+            )}
+            
+            {dateMode === 'range' && (
+              <p className="text-sm text-muted-foreground">
+                Note: Les weekends seront automatiquement exclus de la période.
+              </p>
+            )}
+            
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
                 Annuler
