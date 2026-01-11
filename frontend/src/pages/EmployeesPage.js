@@ -23,23 +23,36 @@ export default function EmployeesPage({ employees, onUpdate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+  const [showInactive, setShowInactive] = useState(false);
   const [formData, setFormData] = useState({
     matricule: '',
     name: '',
     hire_date: '',
     phone: '',
     email: '',
-    berline: ''
+    berline: '',
+    is_inactive: false
   });
+
+  // Count active and inactive
+  const activeCount = employees.filter(e => !e.is_inactive).length;
+  const inactiveCount = employees.filter(e => e.is_inactive).length;
 
   // Filter and sort employees
   const filteredAndSortedEmployees = useMemo(() => {
-    let result = employees.filter(emp =>
-      emp.name.toLowerCase().includes(search.toLowerCase()) ||
-      emp.email?.toLowerCase().includes(search.toLowerCase()) ||
-      emp.matricule?.toLowerCase().includes(search.toLowerCase()) ||
-      emp.berline?.toLowerCase().includes(search.toLowerCase())
-    );
+    let result = employees.filter(emp => {
+      // Filter by search
+      const matchesSearch = 
+        emp.name.toLowerCase().includes(search.toLowerCase()) ||
+        emp.email?.toLowerCase().includes(search.toLowerCase()) ||
+        emp.matricule?.toLowerCase().includes(search.toLowerCase()) ||
+        emp.berline?.toLowerCase().includes(search.toLowerCase());
+      
+      // Filter by active/inactive
+      if (!showInactive && emp.is_inactive) return false;
+      
+      return matchesSearch;
+    });
 
     // Sort
     result.sort((a, b) => {
