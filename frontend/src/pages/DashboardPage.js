@@ -26,7 +26,7 @@ import { Calendar as CalendarComponent } from '../components/ui/calendar';
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
-  Bus, UserX, Info, CalendarDays, ArrowUpDown, Accessibility, GripVertical
+  Bus, UserX, Info, CalendarDays, ArrowUpDown, Accessibility, GripVertical, ClipboardList, CalendarOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -55,7 +55,7 @@ const SCHEDULE_END_HOUR = 19;
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR;
 
 const DRIVER_COL_WIDTH = 200;
-const CIRCUIT_COL_WIDTH = 70;
+const CIRCUIT_COL_WIDTH = 80;
 const DAY_HOURS_COL_WIDTH = 60;
 const WEEK_HOURS_COL_WIDTH = 80;
 const FIXED_LEFT_WIDTH = DRIVER_COL_WIDTH + CIRCUIT_COL_WIDTH;
@@ -75,11 +75,11 @@ const getDayLetter = (dateStr) => {
   return ['D', 'L', 'M', 'W', 'J', 'V', 'S'][d.getDay()];
 };
 
-// Composant Draggable pour les blocs d'assignation
-function DraggableAssignmentBlock({ id, assignment, shift, block, pixelsPerHour, selectedDate, children }) {
+// Draggable block component
+function DraggableBlock({ id, data, children }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: id,
-    data: { type: 'assignment', assignment, shift, block }
+    id,
+    data
   });
 
   const style = transform ? {
@@ -94,79 +94,23 @@ function DraggableAssignmentBlock({ id, assignment, shift, block, pixelsPerHour,
   );
 }
 
-// Composant Draggable pour les tâches temporaires
-function DraggableTaskBlock({ id, task, children }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: id,
-    data: { type: 'task', task }
-  });
-
-  const style = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-    zIndex: 1000,
-  } : undefined;
-
-  return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
-      {children(isDragging)}
-    </div>
-  );
-}
-
-// Composant Droppable pour chaque ligne d'employé
-function DroppableEmployeeRow({ employeeId, children }) {
+// Droppable row component
+function DroppableRow({ id, employeeId, children, isReplacement = false }) {
   const { isOver, setNodeRef } = useDroppable({
-    id: `employee-${employeeId}`,
-    data: { employeeId }
+    id,
+    data: { employeeId, isReplacement }
   });
 
   return (
     <div 
       ref={setNodeRef} 
-      className={`flex border-b border-border transition-all duration-200 ${isOver ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500 ring-inset' : 'hover:bg-muted/30'}`}
+      className={`flex border-b border-border transition-all duration-200 ${isOver ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500 ring-inset' : isReplacement ? 'bg-amber-50/50 dark:bg-amber-950/30' : 'hover:bg-muted/30'}`}
       style={{ height: ROW_HEIGHT }}
     >
       {children}
     </div>
   );
 }
-
-// Replacements Section
-const ReplacementsSection = ({ replacements, selectedDate }) => {
-  const { unassigned_assignments = [], unassigned_tasks = [], absent_items = [] } = replacements || {};
-  const todayAbsentItems = absent_items.filter(item => item.date === selectedDate);
-  const totalReplacements = unassigned_assignments.length + unassigned_tasks.length + todayAbsentItems.length;
-  
-  return (
-    <div 
-      className={`mb-3 p-3 rounded-lg border-2 shadow-sm ${totalReplacements > 0 ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/50' : 'border-green-300 bg-green-50 dark:bg-green-950/50'}`}
-    >
-      <div className="flex items-center gap-2">
-        <div className={`p-1.5 rounded-full ${totalReplacements > 0 ? 'bg-amber-200 dark:bg-amber-800' : 'bg-green-200 dark:bg-green-800'}`}>
-          {totalReplacements > 0 ? <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-300" /> : <Info className="h-4 w-4 text-green-700 dark:text-green-300" />}
-        </div>
-        <span className={`font-semibold text-sm ${totalReplacements > 0 ? 'text-amber-900 dark:text-amber-100' : 'text-green-900 dark:text-green-100'}`}>
-          {totalReplacements > 0 ? `${totalReplacements} remplacement(s) requis` : 'Aucun remplacement requis'}
-        </span>
-        {totalReplacements > 0 && <Badge className="bg-amber-500 text-white px-2">{totalReplacements}</Badge>}
-      </div>
-      {totalReplacements > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {unassigned_assignments.map(a => (
-            <Badge key={a.id} variant="outline" className="text-xs bg-white dark:bg-gray-800 border-amber-400">
-              <Bus className="h-3 w-3 mr-1" />{a.circuit_number}
-            </Badge>
-          ))}
-          {todayAbsentItems.map((item, idx) => (
-            <Badge key={`absent-${idx}`} variant="outline" className="text-xs bg-red-50 dark:bg-red-900/30 border-red-400">
-              <UserX className="h-3 w-3 mr-1" />{item.data.circuit_number}
-            </Badge>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default function DashboardPage() {
   const { admin, logout } = useAuth();
@@ -195,6 +139,9 @@ export default function DashboardPage() {
   const [scheduleData, setScheduleData] = useState([]);
   const [replacements, setReplacements] = useState({});
   
+  // Daily overrides - temporary reassignments for a specific day only
+  const [dailyOverrides, setDailyOverrides] = useState({});
+  
   const [loading, setLoading] = useState(true);
   const [showTempTaskModal, setShowTempTaskModal] = useState(false);
   
@@ -205,15 +152,11 @@ export default function DashboardPage() {
   const [reassignData, setReassignData] = useState(null);
   
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 10,
-      },
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 10 } })
   );
   
   const containerRef = useRef(null);
-  const [pixelsPerHour, setPixelsPerHour] = useState(80);
+  const [pixelsPerHour, setPixelsPerHour] = useState(100);
   const totalScheduleWidth = useMemo(() => TOTAL_HOURS * pixelsPerHour, [pixelsPerHour]);
   const timeMarkers = useMemo(() => generateTimeMarkers(pixelsPerHour), [pixelsPerHour]);
   
@@ -222,7 +165,8 @@ export default function DashboardPage() {
       if (containerRef.current) {
         const containerWidth = containerRef.current.offsetWidth;
         const availableWidth = containerWidth - FIXED_LEFT_WIDTH - FIXED_RIGHT_WIDTH - 40;
-        const calculatedPixelsPerHour = Math.max(75, (availableWidth / TOTAL_HOURS) * 1.25);
+        // Élargir de 25% supplémentaires
+        const calculatedPixelsPerHour = Math.max(80, (availableWidth / TOTAL_HOURS) * 1.5);
         setPixelsPerHour(calculatedPixelsPerHour);
       }
     };
@@ -256,6 +200,15 @@ export default function DashboardPage() {
   
   useEffect(() => { fetchData(); }, [fetchData]);
   
+  // Get daily override key
+  const getOverrideKey = (assignmentId, shiftId, blockId) => `${selectedDate}-${assignmentId}-${shiftId}-${blockId || 'main'}`;
+  
+  // Get effective employee for a block (considering daily overrides)
+  const getEffectiveEmployeeId = (assignment, shiftId, blockId) => {
+    const key = getOverrideKey(assignment.id, shiftId, blockId);
+    return dailyOverrides[key] || assignment.employee_id;
+  };
+  
   const sortedEmployees = useMemo(() => {
     return [...employees].sort((a, b) => {
       if (sortMode === 'name') return a.name.localeCompare(b.name);
@@ -272,6 +225,29 @@ export default function DashboardPage() {
     });
   }, [employees, assignments, sortMode]);
   
+  // Get all unassigned items for the replacement row
+  const unassignedItems = useMemo(() => {
+    const items = [];
+    const { unassigned_assignments = [], absent_items = [] } = replacements || {};
+    
+    // Add unassigned assignments
+    unassigned_assignments.forEach(a => {
+      items.push({ type: 'unassigned_assignment', data: a, id: `unassigned-${a.id}` });
+    });
+    
+    // Add absent items for today
+    absent_items.filter(item => item.date === selectedDate).forEach((item, idx) => {
+      items.push({ type: 'absent_assignment', data: item.data, id: `absent-${idx}` });
+    });
+    
+    // Add unassigned temp tasks
+    tempTasks.filter(t => !t.employee_id && t.date === selectedDate).forEach(t => {
+      items.push({ type: 'unassigned_task', data: t, id: `unassigned-task-${t.id}` });
+    });
+    
+    return items;
+  }, [replacements, tempTasks, selectedDate]);
+  
   const goToPreviousWeek = () => { const d = new Date(selectedDate); d.setDate(d.getDate() - 7); setSelectedDate(d.toISOString().split('T')[0]); };
   const goToNextWeek = () => { const d = new Date(selectedDate); d.setDate(d.getDate() + 7); setSelectedDate(d.toISOString().split('T')[0]); };
   const goToToday = () => {
@@ -281,6 +257,11 @@ export default function DashboardPage() {
     if (day === 6) today.setDate(today.getDate() + 2);
     setSelectedDate(today.toISOString().split('T')[0]);
   };
+  
+  const handleDateClick = (date) => {
+    setSelectedDate(date);
+  };
+  
   const handleCalendarSelect = (date) => {
     if (date) {
       const day = date.getDay();
@@ -290,6 +271,7 @@ export default function DashboardPage() {
       setCalendarOpen(false);
     }
   };
+  
   const handleLogout = () => { logout(); navigate('/'); };
   const toggleSortMode = () => setSortMode(prev => prev === 'circuit' ? 'name' : 'circuit');
   
@@ -314,53 +296,54 @@ export default function DashboardPage() {
     if (!dragData || !dropData) return;
     
     const targetEmployeeId = dropData.employeeId;
+    
+    // If dropping on replacement row, unassign for the day
+    if (dropData.isReplacement) {
+      if (dragData.type === 'assignment') {
+        const key = getOverrideKey(dragData.assignment.id, dragData.shift.id, dragData.block?.id);
+        setDailyOverrides(prev => ({ ...prev, [key]: null }));
+        toast.success(`Circuit ${dragData.assignment.circuit_number} désassigné pour ${selectedDate}`);
+      }
+      return;
+    }
+    
     if (!targetEmployeeId) return;
     
-    // Don't do anything if dropped on same employee
-    const sourceEmployeeId = dragData.type === 'assignment' 
-      ? dragData.assignment.employee_id 
-      : dragData.task.employee_id;
+    // Get source employee
+    let sourceEmployeeId = null;
+    if (dragData.type === 'assignment') {
+      sourceEmployeeId = getEffectiveEmployeeId(dragData.assignment, dragData.shift.id, dragData.block?.id);
+    } else if (dragData.type === 'task') {
+      sourceEmployeeId = dragData.task.employee_id;
+    } else if (dragData.type === 'unassigned_assignment' || dragData.type === 'absent_assignment') {
+      sourceEmployeeId = null;
+    }
     
     if (sourceEmployeeId === targetEmployeeId) return;
     
     const targetEmployee = employees.find(e => e.id === targetEmployeeId);
     if (!targetEmployee) return;
     
-    // Show confirmation modal
-    setReassignData({
-      dragData,
-      targetEmployeeId,
-      targetEmployee
-    });
-    setShowReassignModal(true);
-  };
-  
-  const handleConfirmReassign = async () => {
-    if (!reassignData) return;
-    
-    const { dragData, targetEmployeeId, targetEmployee } = reassignData;
-    
-    try {
-      if (dragData.type === 'assignment') {
-        await api.put(`/assignments/${dragData.assignment.id}`, {
-          ...dragData.assignment,
-          employee_id: targetEmployeeId
-        });
-        toast.success(`Circuit ${dragData.assignment.circuit_number} réassigné à ${targetEmployee.name}`);
-      } else if (dragData.type === 'task') {
-        await api.put(`/temporary-tasks/${dragData.task.id}`, {
-          ...dragData.task,
-          employee_id: targetEmployeeId
-        });
-        toast.success(`Tâche "${dragData.task.name}" réassignée à ${targetEmployee.name}`);
-      }
-      
-      setShowReassignModal(false);
-      setReassignData(null);
-      fetchData();
-    } catch (error) {
-      console.error('Error reassigning:', error);
-      toast.error('Erreur lors de la réassignation');
+    // Apply daily override (temporary reassignment for today only)
+    if (dragData.type === 'assignment') {
+      const key = getOverrideKey(dragData.assignment.id, dragData.shift.id, dragData.block?.id);
+      setDailyOverrides(prev => ({ ...prev, [key]: targetEmployeeId }));
+      toast.success(`Circuit ${dragData.assignment.circuit_number} assigné à ${targetEmployee.name} pour ${selectedDate}`);
+    } else if (dragData.type === 'unassigned_assignment' || dragData.type === 'absent_assignment') {
+      // Create a temporary assignment for the day
+      const assignment = dragData.data;
+      assignment.shifts?.forEach(shift => {
+        if (shift.is_admin) {
+          const key = getOverrideKey(assignment.id, shift.id, null);
+          setDailyOverrides(prev => ({ ...prev, [key]: targetEmployeeId }));
+        } else {
+          shift.blocks?.forEach(block => {
+            const key = getOverrideKey(assignment.id, shift.id, block.id);
+            setDailyOverrides(prev => ({ ...prev, [key]: targetEmployeeId }));
+          });
+        }
+      });
+      toast.success(`Circuit ${assignment.circuit_number} assigné à ${targetEmployee.name} pour ${selectedDate}`);
     }
   };
   
@@ -370,14 +353,14 @@ export default function DashboardPage() {
     toast.success('Tâche temporaire créée');
   };
 
-  // Render block content
-  const renderBlockContent = (assignment, shift, block, isDragging) => {
+  // Render block based on view mode
+  const renderBlock = (assignment, shift, block, isDragging, effectiveEmployeeId) => {
     const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
     const dayLetter = getDayLetter(selectedDate);
     
     if (block?.days && block.days.length > 0 && !block.days.includes(dayLetter)) return null;
     
-    let startMinutes, endMinutes, bgColor, label;
+    let startMinutes, endMinutes, bgColor, label, showHlp = false;
     
     if (shift.is_admin) {
       startMinutes = 6 * 60;
@@ -385,10 +368,29 @@ export default function DashboardPage() {
       bgColor = shift.name === 'MECANO' ? '#795548' : '#607D8B';
       label = shift.name;
     } else if (block) {
-      startMinutes = timeToMinutes(block.start_time) - (block.hlp_before || 0);
-      endMinutes = timeToMinutes(block.end_time) + (block.hlp_after || 0);
-      bgColor = block.school_color || '#9E9E9E';
-      label = block.school_name || 'École';
+      const hlpBefore = block.hlp_before || 0;
+      const hlpAfter = block.hlp_after || 0;
+      
+      if (viewMode === 'complete') {
+        // Mode complet: HLP inclus dans la couleur
+        startMinutes = timeToMinutes(block.start_time) - hlpBefore;
+        endMinutes = timeToMinutes(block.end_time) + hlpAfter;
+        bgColor = block.school_color || '#9E9E9E';
+        label = block.school_name || 'École';
+      } else if (viewMode === 'abbreviated') {
+        // Mode abrégé: juste le circuit
+        startMinutes = timeToMinutes(block.start_time) - hlpBefore;
+        endMinutes = timeToMinutes(block.end_time) + hlpAfter;
+        bgColor = '#6B7280';
+        label = assignment.circuit_number;
+      } else {
+        // Mode détaillé: HLP séparés
+        startMinutes = timeToMinutes(block.start_time);
+        endMinutes = timeToMinutes(block.end_time);
+        bgColor = block.school_color || '#9E9E9E';
+        label = block.school_name || 'École';
+        showHlp = hlpBefore > 0 || hlpAfter > 0;
+      }
     } else {
       return null;
     }
@@ -397,15 +399,18 @@ export default function DashboardPage() {
     const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
     const textColor = getContrastColor(bgColor);
     
+    // Check if this block is temporarily reassigned (show indicator)
+    const isOverridden = effectiveEmployeeId !== assignment.employee_id;
+    
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border border-black/20 font-medium transition-all select-none ${isDragging ? 'opacity-50 scale-105 shadow-xl cursor-grabbing' : 'cursor-grab hover:shadow-lg hover:scale-[1.02]'}`}
+              className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border font-medium transition-all select-none ${isDragging ? 'opacity-50 scale-105 shadow-xl cursor-grabbing' : 'cursor-grab hover:shadow-lg'} ${isOverridden ? 'border-2 border-dashed border-orange-500' : 'border-black/20'}`}
               style={{
                 left: Math.max(0, left),
-                width: Math.max(50, width),
+                width: Math.max(45, width),
                 top: 4,
                 height: ROW_HEIGHT - 8,
                 backgroundColor: bgColor,
@@ -414,6 +419,7 @@ export default function DashboardPage() {
             >
               <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
               <span className="truncate">{label}</span>
+              {isOverridden && <span className="text-[8px] ml-auto">*</span>}
             </div>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -421,7 +427,7 @@ export default function DashboardPage() {
               <div className="font-bold">Circuit {assignment.circuit_number} - {shift.name}</div>
               {block && <div>École: {block.school_name}</div>}
               {block && <div>Horaire: {block.start_time} - {block.end_time}</div>}
-              <div className="text-green-600 font-medium mt-1">↕ Glissez pour réassigner</div>
+              {isOverridden && <div className="text-orange-500">* Réassigné temporairement pour aujourd'hui</div>}
             </div>
           </TooltipContent>
         </Tooltip>
@@ -429,7 +435,7 @@ export default function DashboardPage() {
     );
   };
 
-  const renderTaskContent = (task, isDragging) => {
+  const renderTaskBlock = (task, isDragging) => {
     const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
     const startMinutes = timeToMinutes(task.start_time);
     const endMinutes = timeToMinutes(task.end_time);
@@ -440,34 +446,47 @@ export default function DashboardPage() {
     const textColor = getContrastColor(bgColor);
 
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div
-              className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border-2 border-dashed font-medium transition-all select-none ${isDragging ? 'opacity-50 scale-105 shadow-xl cursor-grabbing' : 'cursor-grab hover:shadow-lg'}`}
-              style={{
-                left: Math.max(0, left),
-                width: Math.max(50, width),
-                top: 4,
-                height: ROW_HEIGHT - 8,
-                backgroundColor: bgColor,
-                color: textColor,
-                borderColor: textColor,
-              }}
-            >
-              <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
-              <span className="truncate">{task.name}</span>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <div className="text-xs">
-              <div className="font-bold">{task.name}</div>
-              <div>Horaire: {task.start_time} - {task.end_time}</div>
-              <div className="text-green-600 font-medium mt-1">↕ Glissez pour réassigner</div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <div
+        className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border-2 border-dashed font-medium transition-all select-none ${isDragging ? 'opacity-50 cursor-grabbing' : 'cursor-grab hover:shadow-lg'}`}
+        style={{
+          left: Math.max(0, left),
+          width: Math.max(45, width),
+          top: 4,
+          height: ROW_HEIGHT - 8,
+          backgroundColor: bgColor,
+          color: textColor,
+          borderColor: textColor,
+        }}
+      >
+        <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
+        <span className="truncate">{task.name}</span>
+      </div>
+    );
+  };
+
+  // Render unassigned item in replacement row
+  const renderUnassignedItem = (item, isDragging) => {
+    let bgColor, label, icon;
+    
+    if (item.type === 'unassigned_assignment' || item.type === 'absent_assignment') {
+      bgColor = item.type === 'absent_assignment' ? '#EF4444' : '#F59E0B';
+      label = item.data.circuit_number;
+      icon = item.type === 'absent_assignment' ? <UserX className="h-3 w-3" /> : <Bus className="h-3 w-3" />;
+    } else {
+      bgColor = '#EC4899';
+      label = item.data.name;
+      icon = <Plus className="h-3 w-3" />;
+    }
+    
+    return (
+      <div
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-white text-xs font-medium mr-2 ${isDragging ? 'opacity-50 cursor-grabbing' : 'cursor-grab hover:shadow-lg'}`}
+        style={{ backgroundColor: bgColor }}
+      >
+        <GripVertical className="h-3 w-3 opacity-60" />
+        {icon}
+        <span>{label}</span>
+      </div>
     );
   };
   
@@ -504,9 +523,9 @@ export default function DashboardPage() {
               <TabsTrigger value="schedule"><Calendar className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Horaires</span></TabsTrigger>
               <TabsTrigger value="employees"><Users className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Employés</span></TabsTrigger>
               <TabsTrigger value="schools"><School className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Écoles</span></TabsTrigger>
-              <TabsTrigger value="assignments"><Bus className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Assignations</span></TabsTrigger>
+              <TabsTrigger value="assignments"><ClipboardList className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Assignations</span></TabsTrigger>
               <TabsTrigger value="absences"><UserX className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Absences</span></TabsTrigger>
-              <TabsTrigger value="holidays"><Settings className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Jours fériés</span></TabsTrigger>
+              <TabsTrigger value="holidays"><CalendarOff className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Jours fériés</span></TabsTrigger>
               <TabsTrigger value="reports"><FileText className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Rapports</span></TabsTrigger>
             </TabsList>
           </Tabs>
@@ -522,7 +541,13 @@ export default function DashboardPage() {
                 <Button variant="outline" size="icon" onClick={goToPreviousWeek}><ChevronLeft className="h-4 w-4" /></Button>
                 <div className="flex gap-1">
                   {weekDates.map(date => (
-                    <Button key={date} variant={date === selectedDate ? 'default' : 'outline'} size="sm" onClick={() => setSelectedDate(date)} className={date === selectedDate ? 'bg-[#4CAF50] hover:bg-[#43A047]' : ''}>
+                    <Button 
+                      key={date} 
+                      variant={date === selectedDate ? 'default' : 'outline'} 
+                      size="sm" 
+                      onClick={() => handleDateClick(date)} 
+                      className={date === selectedDate ? 'bg-[#4CAF50] hover:bg-[#43A047]' : ''}
+                    >
                       {formatDate(date)}
                     </Button>
                   ))}
@@ -532,31 +557,19 @@ export default function DashboardPage() {
                 <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                   <PopoverTrigger asChild><Button variant="outline" size="icon"><Calendar className="h-4 w-4" /></Button></PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent mode="single" selected={new Date(selectedDate)} onSelect={handleCalendarSelect} disabled={(date) => date.getDay() === 0 || date.getDay() === 6} initialFocus />
+                    <CalendarComponent mode="single" selected={new Date(selectedDate + 'T12:00:00')} onSelect={handleCalendarSelect} disabled={(date) => date.getDay() === 0 || date.getDay() === 6} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={toggleSortMode}><ArrowUpDown className="h-4 w-4 mr-1" />{sortMode === 'circuit' ? 'Tri: Circuit' : 'Tri: Nom'}</Button>
                 <div className="flex rounded-md border border-input overflow-hidden">
-                  {['detailed', 'complete', 'abbreviated'].map((mode, idx) => (
-                    <button key={mode} className={`px-3 py-1.5 text-sm font-medium transition-colors ${idx > 0 ? 'border-l border-input' : ''} ${viewMode === mode ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`} onClick={() => setViewMode(mode)}>
-                      {mode === 'detailed' ? 'Détaillé' : mode === 'complete' ? 'Complet' : 'Abrégé'}
-                    </button>
-                  ))}
+                  <button className={`px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'detailed' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`} onClick={() => setViewMode('detailed')}>Détaillé</button>
+                  <button className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-input ${viewMode === 'complete' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`} onClick={() => setViewMode('complete')}>Complet</button>
+                  <button className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-input ${viewMode === 'abbreviated' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`} onClick={() => setViewMode('abbreviated')}>Abrégé</button>
                 </div>
                 <Button onClick={() => setShowTempTaskModal(true)} className="bg-[#4CAF50] hover:bg-[#43A047]"><Plus className="h-4 w-4 mr-1" />Tâche temp.</Button>
               </div>
-            </div>
-
-            <ReplacementsSection replacements={replacements} selectedDate={selectedDate} />
-
-            {/* Drag instruction */}
-            <div className="mb-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center gap-2">
-              <GripVertical className="h-5 w-5 text-blue-600" />
-              <span className="text-sm text-blue-800 dark:text-blue-200 font-medium">
-                Glissez-déposez les blocs colorés pour réassigner un circuit à un autre conducteur
-              </span>
             </div>
 
             {/* Schedule Grid with DnD */}
@@ -583,23 +596,61 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
+                {/* Replacement Row - Fixed at top */}
+                <DroppableRow id="replacement-row" employeeId={null} isReplacement={true}>
+                  <div className="flex-shrink-0 flex bg-amber-50 dark:bg-amber-950/30" style={{ width: FIXED_LEFT_WIDTH }}>
+                    <div className="px-2 border-r border-border flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300" style={{ width: DRIVER_COL_WIDTH }}>
+                      <AlertTriangle className="h-4 w-4" />
+                      Remplacement(s)
+                      {unassignedItems.length > 0 && <Badge className="bg-amber-500 text-white text-xs">{unassignedItems.length}</Badge>}
+                    </div>
+                    <div className="px-1 border-r-2 border-border flex items-center justify-center" style={{ width: CIRCUIT_COL_WIDTH }}>-</div>
+                  </div>
+                  <div className="flex-1 overflow-x-auto py-1 px-2" style={{ minWidth: 0 }}>
+                    <div className="flex items-center h-full" style={{ minWidth: totalScheduleWidth }}>
+                      {unassignedItems.map(item => (
+                        <DraggableBlock key={item.id} id={item.id} data={item}>
+                          {(isDragging) => renderUnassignedItem(item, isDragging)}
+                        </DraggableBlock>
+                      ))}
+                      {unassignedItems.length === 0 && (
+                        <span className="text-sm text-muted-foreground">Aucun remplacement requis</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 flex bg-amber-50 dark:bg-amber-950/30" style={{ width: FIXED_RIGHT_WIDTH }}>
+                    <div className="px-1 border-l-2 border-border flex items-center justify-center" style={{ width: DAY_HOURS_COL_WIDTH }}>-</div>
+                    <div className="px-1 border-l border-border flex items-center justify-center" style={{ width: WEEK_HOURS_COL_WIDTH }}>-</div>
+                  </div>
+                </DroppableRow>
+
                 {/* Body */}
-                <div className="max-h-[calc(100vh-450px)] overflow-auto">
+                <div className="max-h-[calc(100vh-400px)] overflow-auto">
                   {sortedEmployees.map((emp) => {
                     const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
                     const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
                     const weeklyMinutes = empSchedule?.weekly_total || 0;
                     const isAbsent = isEmployeeAbsent(emp.id);
                     
-                    const dayAssignments = isAbsent ? [] : assignments.filter(a => a.employee_id === emp.id && a.start_date <= selectedDate && a.end_date >= selectedDate);
+                    // Get assignments for this employee (including daily overrides)
+                    const dayAssignments = isAbsent ? [] : assignments.filter(a => {
+                      if (!(a.start_date <= selectedDate && a.end_date >= selectedDate)) return false;
+                      // Check if any shift/block is assigned to this employee (original or overridden)
+                      return a.shifts?.some(shift => {
+                        if (shift.is_admin) {
+                          return getEffectiveEmployeeId(a, shift.id, null) === emp.id;
+                        }
+                        return shift.blocks?.some(block => getEffectiveEmployeeId(a, shift.id, block.id) === emp.id);
+                      });
+                    });
+                    
                     const dayTasks = isAbsent ? [] : tempTasks.filter(t => t.employee_id === emp.id && t.date === selectedDate);
                     
                     const isOvertime = weeklyMinutes > 39 * 60;
                     const isUndertime = weeklyMinutes < 15 * 60 && weeklyMinutes > 0;
                     
                     return (
-                      <DroppableEmployeeRow key={emp.id} employeeId={emp.id}>
-                        {/* Fixed left columns */}
+                      <DroppableRow key={emp.id} id={`employee-${emp.id}`} employeeId={emp.id}>
                         <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
                           <div className={`px-2 border-r border-border flex items-center gap-1 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`} style={{ width: DRIVER_COL_WIDTH }}>
                             <span className={`font-medium text-sm truncate ${isAbsent ? 'text-red-600 dark:text-red-400' : ''}`}>{emp.name}</span>
@@ -611,55 +662,51 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         
-                        {/* Scrollable schedule area */}
                         <div className="flex-1 overflow-x-auto" style={{ minWidth: 0 }}>
                           <div className="relative h-full" style={{ width: totalScheduleWidth }}>
-                            {/* Grid lines */}
                             {timeMarkers.map((marker) => (
                               <div key={marker.hour} className="absolute top-0 bottom-0 border-l border-border/40" style={{ left: marker.position }} />
                             ))}
                             
                             {/* Assignment blocks */}
                             {dayAssignments.map(assignment => 
-                              assignment.shifts?.map(shift => 
-                                shift.is_admin ? (
-                                  <DraggableAssignmentBlock
-                                    key={`${assignment.id}-${shift.id}`}
-                                    id={`${assignment.id}-${shift.id}`}
-                                    assignment={assignment}
-                                    shift={shift}
-                                    block={null}
-                                    pixelsPerHour={pixelsPerHour}
-                                    selectedDate={selectedDate}
-                                  >
-                                    {(isDragging) => renderBlockContent(assignment, shift, null, isDragging)}
-                                  </DraggableAssignmentBlock>
-                                ) : (
-                                  shift.blocks?.map(block => (
-                                    <DraggableAssignmentBlock
+                              assignment.shifts?.map(shift => {
+                                if (shift.is_admin) {
+                                  const effectiveEmpId = getEffectiveEmployeeId(assignment, shift.id, null);
+                                  if (effectiveEmpId !== emp.id) return null;
+                                  return (
+                                    <DraggableBlock
+                                      key={`${assignment.id}-${shift.id}`}
+                                      id={`${assignment.id}-${shift.id}`}
+                                      data={{ type: 'assignment', assignment, shift, block: null }}
+                                    >
+                                      {(isDragging) => renderBlock(assignment, shift, null, isDragging, effectiveEmpId)}
+                                    </DraggableBlock>
+                                  );
+                                }
+                                return shift.blocks?.map(block => {
+                                  const effectiveEmpId = getEffectiveEmployeeId(assignment, shift.id, block.id);
+                                  if (effectiveEmpId !== emp.id) return null;
+                                  return (
+                                    <DraggableBlock
                                       key={`${assignment.id}-${shift.id}-${block.id}`}
                                       id={`${assignment.id}-${shift.id}-${block.id}`}
-                                      assignment={assignment}
-                                      shift={shift}
-                                      block={block}
-                                      pixelsPerHour={pixelsPerHour}
-                                      selectedDate={selectedDate}
+                                      data={{ type: 'assignment', assignment, shift, block }}
                                     >
-                                      {(isDragging) => renderBlockContent(assignment, shift, block, isDragging)}
-                                    </DraggableAssignmentBlock>
-                                  ))
-                                )
-                              )
+                                      {(isDragging) => renderBlock(assignment, shift, block, isDragging, effectiveEmpId)}
+                                    </DraggableBlock>
+                                  );
+                                });
+                              })
                             )}
                             
                             {/* Task blocks */}
                             {dayTasks.map(task => (
-                              <DraggableTaskBlock key={task.id} id={`task-${task.id}`} task={task}>
-                                {(isDragging) => renderTaskContent(task, isDragging)}
-                              </DraggableTaskBlock>
+                              <DraggableBlock key={`task-${task.id}`} id={`task-${task.id}`} data={{ type: 'task', task }}>
+                                {(isDragging) => renderTaskBlock(task, isDragging)}
+                              </DraggableBlock>
                             ))}
                             
-                            {/* Absent overlay */}
                             {isAbsent && (
                               <div className="absolute inset-0 flex items-center justify-center bg-red-100/30 dark:bg-red-900/20">
                                 <span className="text-red-500 text-xs font-medium bg-red-100 dark:bg-red-900/50 px-2 py-0.5 rounded">Absent</span>
@@ -668,7 +715,6 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         
-                        {/* Fixed right columns */}
                         <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_RIGHT_WIDTH }}>
                           <div className={`px-1 border-l-2 border-border flex items-center justify-center tabular-nums text-xs ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20 text-muted-foreground' : ''}`} style={{ width: DAY_HOURS_COL_WIDTH }}>
                             {isAbsent ? '-' : formatHoursMinutes(dailyMinutes)}
@@ -679,7 +725,7 @@ export default function DashboardPage() {
                             {isUndertime && <AlertTriangle className="h-3 w-3 text-amber-500" />}
                           </div>
                         </div>
-                      </DroppableEmployeeRow>
+                      </DroppableRow>
                     );
                   })}
                   {sortedEmployees.length === 0 && (
@@ -695,7 +741,9 @@ export default function DashboardPage() {
                     <GripVertical className="h-4 w-4" />
                     {activeDragData.type === 'assignment' 
                       ? `Circuit ${activeDragData.assignment.circuit_number}` 
-                      : activeDragData.task?.name}
+                      : activeDragData.type === 'task'
+                        ? activeDragData.task?.name
+                        : activeDragData.data?.circuit_number || activeDragData.data?.name}
                   </div>
                 )}
               </DragOverlay>
@@ -712,30 +760,6 @@ export default function DashboardPage() {
       </main>
       
       <TemporaryTaskModal open={showTempTaskModal} onClose={() => setShowTempTaskModal(false)} onSuccess={handleTempTaskCreated} employees={employees} schools={schools} selectedDate={selectedDate} />
-      
-      {/* Reassign Confirmation Modal */}
-      <Dialog open={showReassignModal} onOpenChange={setShowReassignModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmer la réassignation</DialogTitle>
-            <DialogDescription>
-              {reassignData?.dragData?.type === 'assignment' 
-                ? `Voulez-vous réassigner le circuit ${reassignData?.dragData?.assignment?.circuit_number} à ${reassignData?.targetEmployee?.name}?`
-                : `Voulez-vous réassigner la tâche "${reassignData?.dragData?.task?.name}" à ${reassignData?.targetEmployee?.name}?`
-              }
-            </DialogDescription>
-          </DialogHeader>
-          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>Attention:</strong> Cette action modifiera l'assignation de façon permanente.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReassignModal(false)}>Annuler</Button>
-            <Button onClick={handleConfirmReassign} className="bg-[#4CAF50] hover:bg-[#43A047]">Confirmer la réassignation</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
