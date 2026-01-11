@@ -21,13 +21,14 @@ import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
-  Bus
+  Bus, UserX
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import EmployeesPage from './EmployeesPage';
 import SchoolsPage from './SchoolsPage';
 import AssignmentsPage from './AssignmentsPage';
+import AbsencesPage from './AbsencesPage';
 import HolidaysPage from './HolidaysPage';
 import ReportsPage from './ReportsPage';
 import TemporaryTaskModal from '../components/TemporaryTaskModal';
@@ -35,9 +36,9 @@ import TemporaryTaskModal from '../components/TemporaryTaskModal';
 const LOGO_URL = 'https://customer-assets.emergentagent.com/job_route-manager-27/artifacts/sd598o43_LogoBerlinesTAB.png';
 
 // Time configuration
-const SCHEDULE_START_HOUR = 5; // 5:00
-const SCHEDULE_END_HOUR = 20; // 20:00
-const DEFAULT_VIEW_START = 6.5; // 6:30
+const SCHEDULE_START_HOUR = 5;
+const SCHEDULE_END_HOUR = 20;
+const DEFAULT_VIEW_START = 6.5;
 const PIXELS_PER_HOUR = 80;
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR;
 const TOTAL_SCHEDULE_WIDTH = TOTAL_HOURS * PIXELS_PER_HOUR;
@@ -50,7 +51,7 @@ const WEEK_HOURS_COL_WIDTH = 90;
 const FIXED_LEFT_WIDTH = DRIVER_COL_WIDTH + CIRCUIT_COL_WIDTH;
 const FIXED_RIGHT_WIDTH = DAY_HOURS_COL_WIDTH + WEEK_HOURS_COL_WIDTH;
 
-// Generate time markers (every hour from 5h to 20h)
+// Generate time markers
 const generateTimeMarkers = () => {
   const markers = [];
   for (let h = SCHEDULE_START_HOUR; h <= SCHEDULE_END_HOUR; h++) {
@@ -198,59 +199,105 @@ const TemporaryTaskBlock = ({ task }) => {
   );
 };
 
-const ReplacementsSection = ({ replacements, onAssign }) => {
+// Section Remplacements - STICKY en haut sous les contrôles
+const ReplacementsSection = ({ replacements, onAssign, selectedDate }) => {
   const { unassigned_assignments = [], unassigned_tasks = [], absent_items = [] } = replacements || {};
   
-  const hasReplacements = unassigned_assignments.length > 0 || 
-                          unassigned_tasks.length > 0 || 
-                          absent_items.length > 0;
+  // Filter absent items for selected date
+  const todayAbsentItems = absent_items.filter(item => item.date === selectedDate);
   
-  if (!hasReplacements) return null;
+  const totalReplacements = unassigned_assignments.length + unassigned_tasks.length + todayAbsentItems.length;
+  
+  if (totalReplacements === 0) return null;
   
   return (
-    <div className="mb-4 p-4 rounded-lg border-2 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800">
-      <div className="flex items-center gap-2 mb-3">
-        <AlertTriangle className="h-5 w-5 text-amber-600" />
-        <h3 className="font-semibold text-amber-800 dark:text-amber-200">Remplacements requis</h3>
-        <Badge variant="secondary" className="bg-amber-200 text-amber-800">
-          {unassigned_assignments.length + unassigned_tasks.length + absent_items.length}
+    <div 
+      className="sticky top-0 z-20 mb-4 p-4 rounded-lg border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/50 dark:border-amber-700 shadow-md"
+      data-testid="replacements-section"
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div className="p-2 rounded-full bg-amber-200 dark:bg-amber-800">
+          <AlertTriangle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+        </div>
+        <div>
+          <h3 className="font-bold text-amber-900 dark:text-amber-100">Remplacements requis</h3>
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            {totalReplacements} élément(s) à assigner pour {formatDate(selectedDate)}
+          </p>
+        </div>
+        <Badge className="ml-auto bg-amber-500 text-white text-lg px-3">
+          {totalReplacements}
         </Badge>
       </div>
-      <ScrollArea className="w-full">
-        <div className="flex gap-2 pb-2">
-          {unassigned_assignments.map(a => (
-            <Badge 
-              key={a.id} 
-              variant="outline" 
-              className="cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800 whitespace-nowrap"
-              onClick={() => onAssign(a, 'assignment')}
-            >
-              Circuit {a.circuit_number}
-            </Badge>
-          ))}
-          {unassigned_tasks.map(t => (
-            <Badge 
-              key={t.id} 
-              variant="outline" 
-              className="cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800 whitespace-nowrap border-dashed"
-              onClick={() => onAssign(t, 'task')}
-            >
-              {t.name}
-            </Badge>
-          ))}
-          {absent_items.map((item, idx) => (
-            <Badge 
-              key={`absent-${idx}`} 
-              variant="outline" 
-              className="cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800 whitespace-nowrap"
-              onClick={() => onAssign(item.data, 'assignment')}
-            >
-              {item.data.circuit_number} ({item.original_employee})
-            </Badge>
-          ))}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+      
+      <div className="space-y-2">
+        {/* Assignations non assignées */}
+        {unassigned_assignments.length > 0 && (
+          <div>
+            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
+              Circuits sans conducteur:
+            </span>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {unassigned_assignments.map(a => (
+                <Badge 
+                  key={a.id} 
+                  variant="outline" 
+                  className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200"
+                  onClick={() => onAssign(a, 'assignment')}
+                  data-testid={`replacement-${a.id}`}
+                >
+                  <Bus className="h-3 w-3 mr-1" />
+                  Circuit {a.circuit_number}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Tâches temporaires non assignées */}
+        {unassigned_tasks.length > 0 && (
+          <div>
+            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
+              Tâches sans conducteur:
+            </span>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {unassigned_tasks.map(t => (
+                <Badge 
+                  key={t.id} 
+                  variant="outline" 
+                  className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-dashed border-amber-400 text-amber-800 dark:text-amber-200"
+                  onClick={() => onAssign(t, 'task')}
+                  data-testid={`replacement-task-${t.id}`}
+                >
+                  {t.name} ({t.start_time}-{t.end_time})
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Éléments d'employés absents */}
+        {todayAbsentItems.length > 0 && (
+          <div>
+            <span className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase">
+              Absences à remplacer:
+            </span>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {todayAbsentItems.map((item, idx) => (
+                <Badge 
+                  key={`absent-${idx}`} 
+                  variant="outline" 
+                  className="cursor-pointer bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 border-red-400 text-red-800 dark:text-red-200"
+                  onClick={() => onAssign(item.data, 'assignment')}
+                >
+                  <UserX className="h-3 w-3 mr-1" />
+                  {item.data.circuit_number} ({item.original_employee})
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -282,10 +329,6 @@ export default function DashboardPage() {
   
   const [loading, setLoading] = useState(true);
   const [showTempTaskModal, setShowTempTaskModal] = useState(false);
-  const [conflictDialog, setConflictDialog] = useState({ open: false, conflicts: [], pending: null });
-  
-  // Refs for synchronized scrolling
-  const scheduleContainerRef = useRef(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   
   // Set default scroll position on mount
@@ -350,13 +393,22 @@ export default function DashboardPage() {
   };
   
   const handleAssign = async (item, type) => {
-    toast.info('Fonctionnalité d\'assignation à venir');
+    toast.info('Fonctionnalité d\'assignation rapide à venir - Utilisez l\'onglet Assignations');
   };
   
   const handleTempTaskCreated = () => {
     setShowTempTaskModal(false);
     fetchData();
     toast.success('Tâche temporaire créée');
+  };
+  
+  // Check if employee is absent on selected date
+  const isEmployeeAbsent = (employeeId) => {
+    return absences.some(a => 
+      a.employee_id === employeeId &&
+      a.start_date <= selectedDate &&
+      a.end_date >= selectedDate
+    );
   };
   
   if (loading) {
@@ -402,7 +454,7 @@ export default function DashboardPage() {
         
         <div className="px-4 pb-2">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-6 w-full max-w-2xl">
+            <TabsList className="grid grid-cols-7 w-full max-w-3xl">
               <TabsTrigger value="schedule" className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
                 <span className="hidden sm:inline">Horaires</span>
@@ -418,6 +470,10 @@ export default function DashboardPage() {
               <TabsTrigger value="assignments" className="flex items-center gap-1">
                 <Bus className="h-4 w-4" />
                 <span className="hidden sm:inline">Assignations</span>
+              </TabsTrigger>
+              <TabsTrigger value="absences" className="flex items-center gap-1">
+                <UserX className="h-4 w-4" />
+                <span className="hidden sm:inline">Absences</span>
               </TabsTrigger>
               <TabsTrigger value="holidays" className="flex items-center gap-1">
                 <Settings className="h-4 w-4" />
@@ -496,14 +552,17 @@ export default function DashboardPage() {
               </div>
             </div>
             
-            {/* Replacements Section */}
-            <ReplacementsSection replacements={replacements} onAssign={handleAssign} />
+            {/* Section Remplacements - STICKY */}
+            <ReplacementsSection 
+              replacements={replacements} 
+              onAssign={handleAssign}
+              selectedDate={selectedDate}
+            />
             
-            {/* Schedule Grid with synchronized scrolling */}
+            {/* Schedule Grid */}
             <div className="border border-border rounded-lg overflow-hidden bg-card">
               {/* Fixed Header Row */}
               <div className="flex border-b-2 border-border bg-muted/70 sticky top-0 z-10">
-                {/* Fixed Left Header */}
                 <div className="flex-shrink-0 flex bg-muted/70" style={{ width: FIXED_LEFT_WIDTH }}>
                   <div 
                     className="font-semibold text-sm px-3 py-2.5 border-r border-border flex items-center"
@@ -519,11 +578,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 
-                {/* Scrollable Time Header */}
-                <div 
-                  className="flex-1 overflow-hidden"
-                  style={{ minWidth: 0 }}
-                >
+                <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
                   <div 
                     className="relative h-10"
                     style={{ 
@@ -545,7 +600,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 
-                {/* Fixed Right Header */}
                 <div className="flex-shrink-0 flex bg-muted/70" style={{ width: FIXED_RIGHT_WIDTH }}>
                   <div 
                     className="font-semibold text-sm px-2 py-2.5 border-l-2 border-border flex items-center justify-center"
@@ -563,22 +617,20 @@ export default function DashboardPage() {
               </div>
               
               {/* Scrollable Body */}
-              <div 
-                ref={scheduleContainerRef}
-                className="max-h-[calc(100vh-340px)] overflow-y-auto"
-              >
+              <div className="max-h-[calc(100vh-400px)] overflow-y-auto">
                 {employees.map(emp => {
                   const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
                   const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
                   const weeklyMinutes = empSchedule?.weekly_total || 0;
+                  const isAbsent = isEmployeeAbsent(emp.id);
                   
-                  const dayAssignments = assignments.filter(a => 
+                  const dayAssignments = isAbsent ? [] : assignments.filter(a => 
                     a.employee_id === emp.id &&
                     a.start_date <= selectedDate &&
                     a.end_date >= selectedDate
                   );
                   
-                  const dayTasks = tempTasks.filter(t => 
+                  const dayTasks = isAbsent ? [] : tempTasks.filter(t => 
                     t.employee_id === emp.id &&
                     t.date === selectedDate
                   );
@@ -589,19 +641,25 @@ export default function DashboardPage() {
                   return (
                     <div 
                       key={emp.id} 
-                      className="flex border-b border-border hover:bg-muted/30 transition-colors"
+                      className={`flex border-b border-border transition-colors ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : 'hover:bg-muted/30'}`}
                       data-testid={`driver-row-${emp.id}`}
                     >
-                      {/* Fixed Left Columns */}
                       <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
                         <div 
-                          className="px-3 py-2 border-r border-border flex items-center"
+                          className={`px-3 py-2 border-r border-border flex items-center gap-2 ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
                           style={{ width: DRIVER_COL_WIDTH }}
                         >
-                          <span className="font-medium text-sm truncate">{emp.name}</span>
+                          <span className={`font-medium text-sm truncate ${isAbsent ? 'text-red-600 dark:text-red-400' : ''}`}>
+                            {emp.name}
+                          </span>
+                          {isAbsent && (
+                            <Badge variant="destructive" className="text-[10px] px-1 py-0">
+                              Absent
+                            </Badge>
+                          )}
                         </div>
                         <div 
-                          className="px-2 py-2 border-r-2 border-border flex items-center justify-center"
+                          className={`px-2 py-2 border-r-2 border-border flex items-center justify-center ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
                           style={{ width: CIRCUIT_COL_WIDTH }}
                         >
                           <span className="text-xs text-muted-foreground font-medium">
@@ -610,7 +668,6 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       
-                      {/* Scrollable Schedule Area */}
                       <div 
                         className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin"
                         style={{ minWidth: 0 }}
@@ -620,7 +677,6 @@ export default function DashboardPage() {
                           className="relative min-h-[52px]"
                           style={{ width: TOTAL_SCHEDULE_WIDTH }}
                         >
-                          {/* Hour grid lines */}
                           {TIME_MARKERS.map((marker) => (
                             <div
                               key={marker.hour}
@@ -629,7 +685,6 @@ export default function DashboardPage() {
                             />
                           ))}
                           
-                          {/* Half-hour markers */}
                           {TIME_MARKERS.slice(0, -1).map((marker) => (
                             <div
                               key={`half-${marker.hour}`}
@@ -638,7 +693,6 @@ export default function DashboardPage() {
                             />
                           ))}
                           
-                          {/* Assignments */}
                           {dayAssignments.map(assignment => 
                             assignment.shifts?.map(shift => (
                               <ShiftBlock
@@ -650,26 +704,29 @@ export default function DashboardPage() {
                             ))
                           )}
                           
-                          {/* Temporary tasks */}
                           {dayTasks.map(task => (
-                            <TemporaryTaskBlock
-                              key={task.id}
-                              task={task}
-                            />
+                            <TemporaryTaskBlock key={task.id} task={task} />
                           ))}
+                          
+                          {isAbsent && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="text-red-500 dark:text-red-400 text-sm font-medium bg-red-100 dark:bg-red-900/50 px-3 py-1 rounded">
+                                Absent
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       
-                      {/* Fixed Right Columns */}
                       <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_RIGHT_WIDTH }}>
                         <div 
-                          className="px-2 py-2 border-l-2 border-border flex items-center justify-center tabular-nums text-sm"
+                          className={`px-2 py-2 border-l-2 border-border flex items-center justify-center tabular-nums text-sm ${isAbsent ? 'bg-red-50 dark:bg-red-950/30 text-muted-foreground' : ''}`}
                           style={{ width: DAY_HOURS_COL_WIDTH }}
                         >
-                          {formatHoursMinutes(dailyMinutes)}
+                          {isAbsent ? '-' : formatHoursMinutes(dailyMinutes)}
                         </div>
                         <div 
-                          className="px-2 py-2 border-l border-border flex items-center justify-center gap-1"
+                          className={`px-2 py-2 border-l border-border flex items-center justify-center gap-1 ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
                           style={{ width: WEEK_HOURS_COL_WIDTH }}
                         >
                           <span className="tabular-nums text-sm font-medium">
@@ -718,6 +775,14 @@ export default function DashboardPage() {
           />
         )}
         
+        {activeTab === 'absences' && (
+          <AbsencesPage 
+            absences={absences} 
+            employees={employees}
+            onUpdate={fetchData} 
+          />
+        )}
+        
         {activeTab === 'holidays' && (
           <HolidaysPage holidays={holidays} onUpdate={fetchData} />
         )}
@@ -727,7 +792,6 @@ export default function DashboardPage() {
         )}
       </main>
       
-      {/* Temporary Task Modal */}
       <TemporaryTaskModal
         open={showTempTaskModal}
         onClose={() => setShowTempTaskModal(false)}
@@ -736,46 +800,6 @@ export default function DashboardPage() {
         schools={schools}
         selectedDate={selectedDate}
       />
-      
-      {/* Conflict Dialog */}
-      <Dialog open={conflictDialog.open} onOpenChange={(open) => setConflictDialog({ ...conflictDialog, open })}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
-              <AlertTriangle className="h-5 w-5" />
-              Conflit d'horaire détecté
-            </DialogTitle>
-            <DialogDescription>
-              Les quarts de travail suivants se chevauchent de plus de 5 minutes:
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {conflictDialog.conflicts.map((c, idx) => (
-              <div key={idx} className="p-2 bg-muted rounded text-sm">
-                {c.type === 'assignment' ? (
-                  <span>Circuit {c.circuit} - {c.shift}: {c.block_time} ({c.overlap_minutes} min)</span>
-                ) : (
-                  <span>Tâche {c.task_name}: {c.task_time} ({c.overlap_minutes} min)</span>
-                )}
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConflictDialog({ open: false, conflicts: [], pending: null })}>
-              Annuler
-            </Button>
-            <Button 
-              className="bg-amber-500 hover:bg-amber-600"
-              onClick={() => {
-                setConflictDialog({ open: false, conflicts: [], pending: null });
-                toast.info('Conflit accepté');
-              }}
-            >
-              Accepter le conflit
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
