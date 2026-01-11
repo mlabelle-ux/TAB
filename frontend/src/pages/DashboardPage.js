@@ -698,10 +698,10 @@ export default function DashboardPage() {
                       
                       {/* Scrollable Schedule Area */}
                       <div 
-                        ref={empIdx === 0 ? scrollContainerRef : null}
-                        className="flex-1 overflow-x-auto overflow-y-hidden"
+                        ref={el => rowScrollRefs.current[empIdx] = el}
+                        className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
                         style={{ minWidth: 0 }}
-                        onScroll={empIdx === 0 ? handleScheduleScroll : undefined}
+                        onScroll={handleScheduleScroll}
                       >
                         <div 
                           className="relative min-h-[52px]"
