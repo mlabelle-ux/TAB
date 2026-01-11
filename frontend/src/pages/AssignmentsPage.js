@@ -436,9 +436,8 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                     checked={formData.is_adapted}
                     onCheckedChange={(checked) => setFormData({ ...formData, is_adapted: checked })}
                   />
-                  <Label htmlFor="is_adapted" className="cursor-pointer flex items-center gap-1 text-sm whitespace-nowrap">
-                    <Accessibility className="h-4 w-4 text-blue-600" />
-                    Adapté
+                  <Label htmlFor="is_adapted" className="cursor-pointer">
+                    <Accessibility className="h-5 w-5 text-blue-600" />
                   </Label>
                 </div>
               </div>
