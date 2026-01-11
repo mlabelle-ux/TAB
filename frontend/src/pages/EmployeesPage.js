@@ -70,7 +70,7 @@ export default function EmployeesPage({ employees, onUpdate }) {
     });
 
     return result;
-  }, [employees, search, sortConfig]);
+  }, [employees, search, sortConfig, showInactive]);
 
   const handleSort = (key) => {
     setSortConfig(prev => ({
