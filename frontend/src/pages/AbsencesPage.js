@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createAbsence, deleteAbsence } from '../lib/api';
+import api from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -17,18 +18,29 @@ import {
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
 import { ScrollArea } from '../components/ui/scroll-area';
-import { Plus, Trash2, UserX, Calendar } from 'lucide-react';
+import { Plus, Trash2, UserX, Calendar, Edit } from 'lucide-react';
 import { toast } from 'sonner';
+
+const SHIFT_TYPES = [
+  { id: 'AM', label: 'AM (Matin)' },
+  { id: 'MIDI', label: 'MIDI' },
+  { id: 'PM', label: 'PM (Après-midi)' },
+  { id: 'ADMIN', label: 'Admin' },
+];
 
 export default function AbsencesPage({ absences, employees, onUpdate }) {
   const [showModal, setShowModal] = useState(false);
+  const [editingAbsence, setEditingAbsence] = useState(null);
   const [formData, setFormData] = useState({
     employee_id: '',
     start_date: '',
     end_date: '',
-    reason: ''
+    reason: '',
+    shift_types: [] // Empty = all shifts
   });
+  const [allShifts, setAllShifts] = useState(true);
 
   const sortedAbsences = [...absences].sort((a, b) => 
     new Date(b.start_date) - new Date(a.start_date)
@@ -53,10 +65,59 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
     return absence.start_date > today;
   };
 
+  const openAddModal = () => {
+    setEditingAbsence(null);
+    setFormData({
+      employee_id: '',
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: new Date().toISOString().split('T')[0],
+      reason: '',
+      shift_types: []
+    });
+    setAllShifts(true);
+    setShowModal(true);
+  };
+
+  const openEditModal = (absence) => {
+    setEditingAbsence(absence);
+    setFormData({
+      employee_id: absence.employee_id,
+      start_date: absence.start_date,
+      end_date: absence.end_date,
+      reason: absence.reason || '',
+      shift_types: absence.shift_types || []
+    });
+    setAllShifts(!absence.shift_types || absence.shift_types.length === 0);
+    setShowModal(true);
+  };
+
+  const handleShiftToggle = (shiftId) => {
+    setAllShifts(false);
+    setFormData(prev => ({
+      ...prev,
+      shift_types: prev.shift_types.includes(shiftId)
+        ? prev.shift_types.filter(s => s !== shiftId)
+        : [...prev.shift_types, shiftId]
+    }));
+  };
+
+  const handleAllShiftsChange = (checked) => {
+    setAllShifts(checked);
+    if (checked) {
+      setFormData(prev => ({ ...prev, shift_types: [] }));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.employee_id || !formData.start_date || !formData.end_date) {
-      toast.error('Veuillez remplir tous les champs obligatoires');
+    
+    if (!editingAbsence && !formData.employee_id) {
+      toast.error('Veuillez sélectionner un employé');
+      return;
+    }
+    
+    if (!formData.start_date || !formData.end_date) {
+      toast.error('Veuillez remplir les dates');
       return;
     }
 
@@ -65,11 +126,26 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
       return;
     }
 
+    const dataToSend = {
+      ...formData,
+      shift_types: allShifts ? [] : formData.shift_types
+    };
+
     try {
-      await createAbsence(formData);
-      toast.success('Absence enregistrée - Les assignations ont été désassignées automatiquement');
+      if (editingAbsence) {
+        // Update existing absence
+        await api.put(`/absences/${editingAbsence.id}`, {
+          start_date: dataToSend.start_date,
+          end_date: dataToSend.end_date,
+          reason: dataToSend.reason,
+          shift_types: dataToSend.shift_types
+        });
+        toast.success('Absence modifiée');
+      } else {
+        await createAbsence(dataToSend);
+        toast.success('Absence enregistrée');
+      }
       setShowModal(false);
-      setFormData({ employee_id: '', start_date: '', end_date: '', reason: '' });
       onUpdate();
     } catch (error) {
       toast.error('Erreur lors de l\'enregistrement');
@@ -81,11 +157,16 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
     
     try {
       await deleteAbsence(absence.id);
-      toast.success('Absence supprimée - Les assignations sont de nouveau actives');
+      toast.success('Absence supprimée');
       onUpdate();
     } catch (error) {
       toast.error('Erreur lors de la suppression');
     }
+  };
+
+  const getShiftTypesDisplay = (shiftTypes) => {
+    if (!shiftTypes || shiftTypes.length === 0) return 'Tous les quarts';
+    return shiftTypes.join(', ');
   };
 
   return (
@@ -98,7 +179,7 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
             <Badge variant="secondary">{absences.length}</Badge>
           </CardTitle>
           <Button 
-            onClick={() => setShowModal(true)} 
+            onClick={openAddModal} 
             className="bg-[#4CAF50] hover:bg-[#43A047]" 
             data-testid="add-absence-btn"
           >
@@ -114,9 +195,10 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
                   <TableHead>Employé</TableHead>
                   <TableHead>Début</TableHead>
                   <TableHead>Fin</TableHead>
+                  <TableHead>Quarts</TableHead>
                   <TableHead>Raison</TableHead>
                   <TableHead>Statut</TableHead>
-                  <TableHead className="w-20">Actions</TableHead>
+                  <TableHead className="w-24">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -125,6 +207,7 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
                     <TableCell className="font-medium">{absence.employee_name}</TableCell>
                     <TableCell>{formatDateDisplay(absence.start_date)}</TableCell>
                     <TableCell>{formatDateDisplay(absence.end_date)}</TableCell>
+                    <TableCell className="text-sm">{getShiftTypesDisplay(absence.shift_types)}</TableCell>
                     <TableCell className="max-w-xs truncate">{absence.reason || '-'}</TableCell>
                     <TableCell>
                       {isCurrentAbsence(absence) ? (
@@ -136,21 +219,31 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(absence)}
-                        className="text-destructive hover:text-destructive"
-                        data-testid={`delete-absence-${absence.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditModal(absence)}
+                          data-testid={`edit-absence-${absence.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(absence)}
+                          className="text-destructive hover:text-destructive"
+                          data-testid={`delete-absence-${absence.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
                 {sortedAbsences.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       Aucune absence enregistrée
                     </TableCell>
                   </TableRow>
@@ -161,32 +254,41 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
         </CardContent>
       </Card>
 
-      {/* Add Absence Modal */}
+      {/* Add/Edit Absence Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              Déclarer une absence
+              {editingAbsence ? 'Modifier l\'absence' : 'Déclarer une absence'}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Employé *</Label>
-              <Select
-                value={formData.employee_id}
-                onValueChange={(v) => setFormData({ ...formData, employee_id: v })}
-              >
-                <SelectTrigger data-testid="absence-employee-select">
-                  <SelectValue placeholder="Sélectionner un employé" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {!editingAbsence && (
+              <div className="space-y-2">
+                <Label>Employé *</Label>
+                <Select
+                  value={formData.employee_id}
+                  onValueChange={(v) => setFormData({ ...formData, employee_id: v })}
+                >
+                  <SelectTrigger data-testid="absence-employee-select">
+                    <SelectValue placeholder="Sélectionner un employé" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map(emp => (
+                      <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {editingAbsence && (
+              <div className="p-3 bg-muted rounded-lg">
+                <Label className="text-muted-foreground">Employé</Label>
+                <p className="font-medium">{editingAbsence.employee_name}</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -209,22 +311,52 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
               </div>
             </div>
 
+            {/* Shift types selection */}
+            <div className="space-y-3">
+              <Label>Quarts concernés</Label>
+              <div className="flex items-center space-x-2 mb-2">
+                <Checkbox
+                  id="all-shifts"
+                  checked={allShifts}
+                  onCheckedChange={handleAllShiftsChange}
+                />
+                <label htmlFor="all-shifts" className="text-sm font-medium cursor-pointer">
+                  Tous les quarts de travail
+                </label>
+              </div>
+              
+              {!allShifts && (
+                <div className="grid grid-cols-2 gap-2 p-3 bg-muted/50 rounded-lg">
+                  {SHIFT_TYPES.map(shift => (
+                    <div key={shift.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`shift-${shift.id}`}
+                        checked={formData.shift_types.includes(shift.id)}
+                        onCheckedChange={() => handleShiftToggle(shift.id)}
+                      />
+                      <label htmlFor={`shift-${shift.id}`} className="text-sm cursor-pointer">
+                        {shift.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label>Raison (optionnel)</Label>
               <Textarea
                 value={formData.reason}
                 onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                 placeholder="Ex: Maladie, Vacances, Formation..."
-                rows={3}
+                rows={2}
                 data-testid="absence-reason"
               />
             </div>
 
             <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
               <p className="text-sm text-amber-800 dark:text-amber-200">
-                <strong>Note:</strong> Les assignations, quarts et blocs de travail de cet employé 
-                seront automatiquement désassignés pendant cette période et apparaîtront dans 
-                la section "Remplacements".
+                <strong>Note:</strong> Les quarts sélectionnés seront désassignés automatiquement et apparaîtront dans la section "Remplacements".
               </p>
             </div>
 
@@ -233,7 +365,7 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
                 Annuler
               </Button>
               <Button type="submit" className="bg-[#4CAF50] hover:bg-[#43A047]" data-testid="save-absence-btn">
-                Enregistrer
+                {editingAbsence ? 'Enregistrer' : 'Déclarer'}
               </Button>
             </DialogFooter>
           </form>
