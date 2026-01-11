@@ -5,6 +5,7 @@ import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Checkbox } from '../components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { FileText, Download, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,6 +21,7 @@ export default function ReportsPage({ employees }) {
   });
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [selectAll, setSelectAll] = useState(true);
+  const [sortBy, setSortBy] = useState('name'); // name, matricule, hire_date
 
   const handleSelectAll = (checked) => {
     setSelectAll(checked);
@@ -49,9 +51,8 @@ export default function ReportsPage({ employees }) {
     }
 
     const employeeIds = selectAll ? '' : selectedEmployees.join(',');
-    const url = getHoursReportPDF(startDate, endDate, employeeIds);
+    const url = getHoursReportPDF(startDate, endDate, employeeIds, sortBy);
     
-    // Open PDF in new tab
     window.open(url, '_blank');
     toast.success('Génération du rapport en cours...');
   };
@@ -98,6 +99,31 @@ export default function ReportsPage({ employees }) {
             </div>
           </div>
 
+          {/* Sort Option */}
+          <div className="space-y-3">
+            <Label>Ordre de tri des conducteurs</Label>
+            <RadioGroup value={sortBy} onValueChange={setSortBy} className="flex flex-wrap gap-4">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="name" id="sort-name" />
+                <Label htmlFor="sort-name" className="cursor-pointer font-normal">
+                  Ordre alphabétique
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="matricule" id="sort-matricule" />
+                <Label htmlFor="sort-matricule" className="cursor-pointer font-normal">
+                  Par matricule
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="hire_date" id="sort-hire" />
+                <Label htmlFor="sort-hire" className="cursor-pointer font-normal">
+                  Par date d'embauche
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
           {/* Employee Selection */}
           <div className="space-y-3">
             <Label>Employés à inclure</Label>
@@ -129,7 +155,7 @@ export default function ReportsPage({ employees }) {
                           htmlFor={`emp-${emp.id}`} 
                           className="text-sm cursor-pointer truncate"
                         >
-                          {emp.name}
+                          {emp.matricule ? `[${emp.matricule}] ` : ''}{emp.name}
                         </label>
                       </div>
                     ))}
