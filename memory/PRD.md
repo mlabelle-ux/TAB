@@ -22,8 +22,11 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [x] Icône handicapé ♿ à côté du circuit si "Adapté" est coché
 - [x] Section "Remplacements" fixe en haut
 - [x] Info-bulle (tooltip) au survol des blocs
-- [x] **DRAG AND DROP** - Glisser-déposer les blocs pour réassigner à un autre conducteur
-- [x] Modal de confirmation avant réassignation
+- [x] **DRAG AND DROP FONCTIONNEL** ✅
+  - Glisser-déposer les blocs pour réassigner à un autre conducteur
+  - Ligne cible surlignée en vert pendant le survol
+  - DragOverlay affichant "Circuit XXX" pendant le drag
+  - Modal de confirmation avant réassignation permanente
 
 ### Gestion des Employés ✅
 - [x] CRUD complet
@@ -78,4 +81,4 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [ ] Alertes visuelles (icônes) pour heures hebdomadaires > 39h ou < 15h
 
 ## Dernière mise à jour
-11 janvier 2026 - Implémentation du Drag and Drop
+11 janvier 2026 - **Drag and Drop 100% fonctionnel**
