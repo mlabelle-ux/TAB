@@ -22,7 +22,7 @@ import { Calendar as CalendarComponent } from '../components/ui/calendar';
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, FileText, Plus, AlertTriangle,
-  Bus, UserX, CalendarDays, ArrowUpDown, Accessibility, GripVertical, ClipboardList, CalendarOff
+  Bus, UserX, CalendarDays, ArrowUpDown, Accessibility, GripVertical, ClipboardList, CalendarOff, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
