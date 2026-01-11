@@ -129,14 +129,14 @@ export default function TemporaryTaskModal({
           <div className="space-y-2">
             <Label>Conducteur (optionnel)</Label>
             <Select
-              value={formData.employee_id}
-              onValueChange={(v) => setFormData({ ...formData, employee_id: v })}
+              value={formData.employee_id || "none"}
+              onValueChange={(v) => setFormData({ ...formData, employee_id: v === "none" ? "" : v })}
             >
               <SelectTrigger data-testid="temp-task-employee">
                 <SelectValue placeholder="Sélectionner un conducteur" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Non assigné</SelectItem>
+                <SelectItem value="none">Non assigné</SelectItem>
                 {employees.map(emp => (
                   <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
                 ))}
@@ -147,14 +147,14 @@ export default function TemporaryTaskModal({
           <div className="space-y-2">
             <Label>École (optionnel)</Label>
             <Select
-              value={formData.school_id}
-              onValueChange={(v) => setFormData({ ...formData, school_id: v })}
+              value={formData.school_id || "none"}
+              onValueChange={(v) => setFormData({ ...formData, school_id: v === "none" ? "" : v })}
             >
               <SelectTrigger data-testid="temp-task-school">
                 <SelectValue placeholder="Sélectionner une école" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Aucune</SelectItem>
+                <SelectItem value="none">Aucune</SelectItem>
                 {schools.map(school => (
                   <SelectItem key={school.id} value={school.id}>
                     <div className="flex items-center gap-2">

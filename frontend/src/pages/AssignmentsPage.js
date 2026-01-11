@@ -308,14 +308,14 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
               <div className="space-y-2">
                 <Label>Conducteur</Label>
                 <Select
-                  value={formData.employee_id}
-                  onValueChange={(v) => setFormData({ ...formData, employee_id: v })}
+                  value={formData.employee_id || "unassigned"}
+                  onValueChange={(v) => setFormData({ ...formData, employee_id: v === "unassigned" ? "" : v })}
                 >
                   <SelectTrigger data-testid="employee-select">
                     <SelectValue placeholder="Sélectionner un conducteur" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Non assigné</SelectItem>
+                    <SelectItem value="unassigned">Non assigné</SelectItem>
                     {employees.map(emp => (
                       <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
                     ))}
