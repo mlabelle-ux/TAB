@@ -9,10 +9,10 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
@@ -41,6 +41,7 @@ class AdminLogin(BaseModel):
 class Employee(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    matricule: str = ""
     name: str
     hire_date: str
     phone: str = ""
@@ -49,6 +50,7 @@ class Employee(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class EmployeeCreate(BaseModel):
+    matricule: str = ""
     name: str
     hire_date: str
     phone: str = ""
@@ -72,16 +74,18 @@ class Block(BaseModel):
     school_id: str
     school_name: str = ""
     school_color: str = "#4CAF50"
-    start_time: str  # HH:MM format
-    end_time: str    # HH:MM format
-    hlp_before: int = 0  # minutes
-    hlp_after: int = 0   # minutes
+    start_time: str
+    end_time: str
+    hlp_before: int = 0
+    hlp_after: int = 0
+    days: List[str] = ["L", "M", "W", "J", "V"]  # Jours applicables
 
 class Shift(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str  # AM, PM, MIDI
+    name: str  # AM, PM, MIDI, ADMIN
     blocks: List[Block] = []
+    is_admin: bool = False  # Quart admin = 8h/jour fixe
 
 class Assignment(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -90,8 +94,8 @@ class Assignment(BaseModel):
     shifts: List[Shift] = []
     employee_id: Optional[str] = None
     employee_name: str = ""
-    start_date: str  # YYYY-MM-DD
-    end_date: str    # YYYY-MM-DD
+    start_date: str
+    end_date: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class AssignmentCreate(BaseModel):
@@ -105,7 +109,7 @@ class TemporaryTask(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    date: str  # YYYY-MM-DD
+    date: str
     start_time: str
     end_time: str
     employee_id: Optional[str] = None
@@ -131,6 +135,7 @@ class Absence(BaseModel):
     start_date: str
     end_date: str
     reason: str = ""
+    shift_types: List[str] = []  # Quarts concernés: AM, PM, MIDI, ADMIN ou vide = tous
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class AbsenceCreate(BaseModel):
@@ -138,59 +143,76 @@ class AbsenceCreate(BaseModel):
     start_date: str
     end_date: str
     reason: str = ""
+    shift_types: List[str] = []
+
+class AbsenceUpdate(BaseModel):
+    start_date: str
+    end_date: str
+    reason: str = ""
+    shift_types: List[str] = []
 
 class Holiday(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    date: str  # YYYY-MM-DD
+    date: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class HolidayCreate(BaseModel):
     name: str
     date: str
 
-class DailySchedule(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    date: str
-    employee_id: str
-    assignment_id: Optional[str] = None
-    shift_id: Optional[str] = None
-    block_id: Optional[str] = None
-    temporary_task_id: Optional[str] = None
-    is_replacement: bool = False
-    original_employee_id: Optional[str] = None
-
 # ============== HELPER FUNCTIONS ==============
 
 def time_to_minutes(time_str: str) -> int:
-    """Convert HH:MM to minutes from midnight"""
+    if not time_str:
+        return 0
     h, m = map(int, time_str.split(':'))
     return h * 60 + m
 
 def minutes_to_time(minutes: int) -> str:
-    """Convert minutes from midnight to HH:MM"""
     h = minutes // 60
     m = minutes % 60
     return f"{h:02d}:{m:02d}"
 
-def calculate_shift_duration(shift: dict) -> int:
-    """Calculate total minutes for a shift including HLP"""
+def get_day_letter(date_str: str) -> str:
+    """Get day letter from date (L, M, W, J, V)"""
+    d = datetime.strptime(date_str, '%Y-%m-%d')
+    days = ['L', 'M', 'W', 'J', 'V', 'S', 'D']
+    return days[d.weekday()]
+
+def calculate_shift_duration(shift: dict, date_str: str = None, is_admin: bool = False) -> int:
+    """Calculate total minutes for a shift"""
+    if is_admin or shift.get('is_admin'):
+        return 8 * 60  # 8 heures fixes pour admin
+    
     total = 0
+    day_letter = get_day_letter(date_str) if date_str else None
+    
     for block in shift.get('blocks', []):
+        # Vérifier si le bloc s'applique à ce jour
+        if day_letter and day_letter not in block.get('days', ['L', 'M', 'W', 'J', 'V']):
+            continue
         start = time_to_minutes(block['start_time'])
         end = time_to_minutes(block['end_time'])
         total += (end - start) + block.get('hlp_before', 0) + block.get('hlp_after', 0)
     return total
 
-def calculate_daily_hours(assignments: list, temp_tasks: list, date_str: str) -> int:
+def calculate_daily_hours(assignments: list, temp_tasks: list, date_str: str, holidays: set = None, is_admin_exempt: bool = False) -> int:
     """Calculate total minutes worked on a specific date"""
+    # Check if holiday and not admin
+    if holidays and date_str in holidays and not is_admin_exempt:
+        return 0
+    
     total = 0
     for assignment in assignments:
         if assignment.get('start_date') <= date_str <= assignment.get('end_date'):
             for shift in assignment.get('shifts', []):
-                total += calculate_shift_duration(shift)
+                if shift.get('is_admin'):
+                    total += 8 * 60  # Admin = 8h fixe
+                else:
+                    total += calculate_shift_duration(shift, date_str)
+    
     for task in temp_tasks:
         if task.get('date') == date_str:
             start = time_to_minutes(task['start_time'])
@@ -199,12 +221,10 @@ def calculate_daily_hours(assignments: list, temp_tasks: list, date_str: str) ->
     return total
 
 def is_weekend(date_str: str) -> bool:
-    """Check if date is Saturday or Sunday"""
     d = datetime.strptime(date_str, '%Y-%m-%d')
     return d.weekday() >= 5
 
 def format_hours_minutes(total_minutes: int) -> str:
-    """Format minutes as HH:MM"""
     hours = total_minutes // 60
     minutes = total_minutes % 60
     return f"{hours:02d}:{minutes:02d}"
@@ -232,6 +252,27 @@ async def get_employees():
 
 @api_router.post("/employees", response_model=Employee)
 async def create_employee(data: EmployeeCreate):
+    # Vérifier les doublons
+    if data.matricule:
+        existing = await db.employees.find_one({"matricule": data.matricule}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ce matricule existe déjà")
+    
+    if data.email:
+        existing = await db.employees.find_one({"email": data.email}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ce courriel existe déjà")
+    
+    if data.phone:
+        existing = await db.employees.find_one({"phone": data.phone}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ce téléphone existe déjà")
+    
+    if data.berline:
+        existing = await db.employees.find_one({"berline": data.berline}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Cette berline existe déjà")
+    
     employee = Employee(**data.model_dump())
     doc = employee.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
@@ -240,6 +281,27 @@ async def create_employee(data: EmployeeCreate):
 
 @api_router.put("/employees/{employee_id}", response_model=Employee)
 async def update_employee(employee_id: str, data: EmployeeCreate):
+    # Vérifier les doublons (sauf pour l'employé actuel)
+    if data.matricule:
+        existing = await db.employees.find_one({"matricule": data.matricule, "id": {"$ne": employee_id}}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ce matricule existe déjà")
+    
+    if data.email:
+        existing = await db.employees.find_one({"email": data.email, "id": {"$ne": employee_id}}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ce courriel existe déjà")
+    
+    if data.phone:
+        existing = await db.employees.find_one({"phone": data.phone, "id": {"$ne": employee_id}}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ce téléphone existe déjà")
+    
+    if data.berline:
+        existing = await db.employees.find_one({"berline": data.berline, "id": {"$ne": employee_id}}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=400, detail="Cette berline existe déjà")
+    
     result = await db.employees.update_one(
         {"id": employee_id},
         {"$set": data.model_dump()}
@@ -421,12 +483,24 @@ async def create_absence(data: AbsenceCreate):
         employee_name=employee.get('name', ''),
         start_date=data.start_date,
         end_date=data.end_date,
-        reason=data.reason
+        reason=data.reason,
+        shift_types=data.shift_types
     )
     doc = absence.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     await db.absences.insert_one(doc)
     return absence.model_dump()
+
+@api_router.put("/absences/{absence_id}")
+async def update_absence(absence_id: str, data: AbsenceUpdate):
+    result = await db.absences.update_one(
+        {"id": absence_id},
+        {"$set": data.model_dump()}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Absence non trouvée")
+    absence = await db.absences.find_one({"id": absence_id}, {"_id": 0})
+    return absence
 
 @api_router.delete("/absences/{absence_id}")
 async def delete_absence(absence_id: str):
@@ -461,7 +535,6 @@ async def delete_holiday(holiday_id: str):
 
 @api_router.get("/schedule")
 async def get_schedule(date: str = None, week_start: str = None):
-    """Get schedule for a specific date or week"""
     employees = await db.employees.find({}, {"_id": 0}).to_list(200)
     assignments = await db.assignments.find({}, {"_id": 0}).to_list(500)
     temp_tasks = await db.temporary_tasks.find({}, {"_id": 0}).to_list(500)
@@ -470,20 +543,19 @@ async def get_schedule(date: str = None, week_start: str = None):
     
     holiday_dates = {h['date'] for h in holidays}
     
-    # Calculate weekly hours for each employee
-    schedule_data = []
-    
     if week_start:
         week_start_date = datetime.strptime(week_start, '%Y-%m-%d')
-        week_dates = []
-        for i in range(7):
-            d = week_start_date + timedelta(days=i)
-            if d.weekday() < 5:  # Monday to Friday
-                week_dates.append(d.strftime('%Y-%m-%d'))
+        # Trouver le lundi de la semaine
+        day_of_week = week_start_date.weekday()
+        monday = week_start_date - timedelta(days=day_of_week)
+        week_dates = [(monday + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(5)]
     else:
         today = datetime.now()
-        monday = today - timedelta(days=today.weekday())
+        day_of_week = today.weekday()
+        monday = today - timedelta(days=day_of_week)
         week_dates = [(monday + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(5)]
+    
+    schedule_data = []
     
     for emp in employees:
         emp_id = emp['id']
@@ -491,31 +563,55 @@ async def get_schedule(date: str = None, week_start: str = None):
         emp_temp_tasks = [t for t in temp_tasks if t.get('employee_id') == emp_id]
         emp_absences = [a for a in absences if a.get('employee_id') == emp_id]
         
+        # Get circuit numbers for this employee
+        circuit_numbers = [a['circuit_number'] for a in emp_assignments]
+        
         daily_hours = {}
         weekly_total = 0
         
         for date_str in week_dates:
             if date_str in holiday_dates:
-                daily_hours[date_str] = 0
-                continue
+                # Check if employee has admin shift (not affected by holidays)
+                has_admin = any(
+                    any(s.get('is_admin') for s in a.get('shifts', []))
+                    for a in emp_assignments
+                    if a.get('start_date') <= date_str <= a.get('end_date')
+                )
+                if not has_admin:
+                    daily_hours[date_str] = 0
+                    continue
             
-            # Check if employee is absent
-            is_absent = any(
-                a['start_date'] <= date_str <= a['end_date']
-                for a in emp_absences
-            )
+            # Check absence for specific shifts
+            emp_absence_today = [a for a in emp_absences if a['start_date'] <= date_str <= a['end_date']]
             
-            if is_absent:
-                daily_hours[date_str] = 0
-                continue
+            day_minutes = 0
+            for assignment in emp_assignments:
+                if not (assignment.get('start_date') <= date_str <= assignment.get('end_date')):
+                    continue
+                for shift in assignment.get('shifts', []):
+                    # Check if absent for this shift type
+                    is_absent_for_shift = any(
+                        not abs_entry.get('shift_types') or shift.get('name') in abs_entry.get('shift_types', [])
+                        for abs_entry in emp_absence_today
+                    )
+                    if is_absent_for_shift and emp_absence_today:
+                        continue
+                    day_minutes += calculate_shift_duration(shift, date_str)
             
-            day_minutes = calculate_daily_hours(emp_assignments, emp_temp_tasks, date_str)
+            # Add temp tasks
+            for task in emp_temp_tasks:
+                if task.get('date') == date_str:
+                    start = time_to_minutes(task['start_time'])
+                    end = time_to_minutes(task['end_time'])
+                    day_minutes += (end - start)
+            
             daily_hours[date_str] = day_minutes
             weekly_total += day_minutes
         
         schedule_data.append({
             "employee": emp,
             "assignments": emp_assignments,
+            "circuit_numbers": circuit_numbers,
             "temporary_tasks": emp_temp_tasks,
             "absences": emp_absences,
             "daily_hours": daily_hours,
@@ -523,11 +619,20 @@ async def get_schedule(date: str = None, week_start: str = None):
             "weekly_total_formatted": format_hours_minutes(weekly_total)
         })
     
-    # Get unassigned items for replacements
+    # Sort by circuit number (employees with assignments first, then by circuit number)
+    def sort_key(item):
+        circuits = item.get('circuit_numbers', [])
+        if not circuits:
+            return (1, '', item['employee']['name'])
+        return (0, min(circuits), item['employee']['name'])
+    
+    schedule_data.sort(key=sort_key)
+    
+    # Unassigned items
     unassigned_assignments = [a for a in assignments if not a.get('employee_id')]
     unassigned_tasks = [t for t in temp_tasks if not t.get('employee_id')]
     
-    # Get items from absent employees
+    # Items from absent employees
     replacement_items = []
     for emp in employees:
         emp_id = emp['id']
@@ -564,7 +669,6 @@ async def get_schedule(date: str = None, week_start: str = None):
 
 @api_router.post("/check-conflict")
 async def check_conflict(data: dict):
-    """Check if there's a schedule conflict for an employee"""
     employee_id = data.get('employee_id')
     date_str = data.get('date')
     start_time = data.get('start_time')
@@ -601,7 +705,7 @@ async def check_conflict(data: dict):
                 block_end = time_to_minutes(block['end_time']) + block.get('hlp_after', 0)
                 
                 overlap = min(new_end, block_end) - max(new_start, block_start)
-                if overlap > 5:  # More than 5 minutes overlap
+                if overlap > 5:
                     conflicts.append({
                         "type": "assignment",
                         "assignment_id": assignment['id'],
@@ -635,9 +739,9 @@ async def check_conflict(data: dict):
 async def generate_hours_report(
     start_date: str,
     end_date: str,
-    employee_ids: str = ""
+    employee_ids: str = "",
+    sort_by: str = "name"  # name, matricule, hire_date
 ):
-    """Generate PDF report of hours worked"""
     employees = await db.employees.find({}, {"_id": 0}).to_list(200)
     assignments = await db.assignments.find({}, {"_id": 0}).to_list(500)
     temp_tasks = await db.temporary_tasks.find({}, {"_id": 0}).to_list(500)
@@ -646,10 +750,17 @@ async def generate_hours_report(
     
     holiday_dates = {h['date'] for h in holidays}
     
-    # Filter employees if specified
     if employee_ids:
         emp_ids = employee_ids.split(',')
         employees = [e for e in employees if e['id'] in emp_ids]
+    
+    # Sort employees
+    if sort_by == "matricule":
+        employees.sort(key=lambda e: e.get('matricule', '') or 'ZZZZ')
+    elif sort_by == "hire_date":
+        employees.sort(key=lambda e: e.get('hire_date', '9999-99-99'))
+    else:  # name (alphabetical)
+        employees.sort(key=lambda e: e.get('name', ''))
     
     # Generate date range (excluding weekends)
     start = datetime.strptime(start_date, '%Y-%m-%d')
@@ -657,25 +768,29 @@ async def generate_hours_report(
     date_range = []
     current = start
     while current <= end:
-        if current.weekday() < 5:  # Monday to Friday
+        if current.weekday() < 5:
             date_range.append(current.strftime('%Y-%m-%d'))
         current += timedelta(days=1)
     
-    # Create PDF
+    # Create PDF in PORTRAIT mode
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter))
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
     styles = getSampleStyleSheet()
     
     # Title
     elements.append(Paragraph(
-        f"Rapport des heures travaillées - {start_date} au {end_date}",
+        f"Rapport des heures travaillées",
         styles['Title']
+    ))
+    elements.append(Paragraph(
+        f"Période: {start_date} au {end_date}",
+        styles['Normal']
     ))
     elements.append(Spacer(1, 20))
     
-    # Build table data
-    headers = ["Employé"] + [d[5:] for d in date_range] + ["Total"]
+    # Build table - simplified for portrait
+    headers = ["Matricule", "Employé", "Total"]
     table_data = [headers]
     
     for emp in employees:
@@ -684,12 +799,10 @@ async def generate_hours_report(
         emp_temp_tasks = [t for t in temp_tasks if t.get('employee_id') == emp_id]
         emp_absences = [a for a in absences if a.get('employee_id') == emp_id]
         
-        row = [emp['name']]
         total_minutes = 0
         
         for date_str in date_range:
             if date_str in holiday_dates:
-                row.append("F")
                 continue
             
             is_absent = any(
@@ -698,31 +811,32 @@ async def generate_hours_report(
             )
             
             if is_absent:
-                row.append("A")
                 continue
             
-            day_minutes = calculate_daily_hours(emp_assignments, emp_temp_tasks, date_str)
+            day_minutes = calculate_daily_hours(emp_assignments, emp_temp_tasks, date_str, holiday_dates)
             total_minutes += day_minutes
-            row.append(format_hours_minutes(day_minutes))
         
-        row.append(format_hours_minutes(total_minutes))
+        row = [
+            emp.get('matricule', '-'),
+            emp['name'],
+            format_hours_minutes(total_minutes)
+        ]
         table_data.append(row)
     
-    # Create table
-    table = Table(table_data)
+    table = Table(table_data, colWidths=[80, 250, 80])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.white),
         ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
     ]))
     elements.append(table)
     
@@ -739,7 +853,6 @@ async def generate_hours_report(
 
 @api_router.post("/init-data")
 async def init_data():
-    """Initialize default data (admins)"""
     admins_data = [
         {"code": "1600", "name": "Fernand Alary"},
         {"code": "2201", "name": "Chantal Lachapelle"},
