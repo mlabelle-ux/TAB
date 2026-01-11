@@ -172,6 +172,26 @@ class HolidayCreate(BaseModel):
     date: str
     type: str = "ferie"
 
+# Réassignation temporaire - pour le Drag & Drop
+class TemporaryReassignment(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    date: str  # Date spécifique de la réassignation
+    assignment_id: str  # ID de l'assignation originale
+    shift_id: str  # ID du quart
+    block_id: Optional[str] = None  # ID du bloc (null pour admin/mecano)
+    original_employee_id: Optional[str] = None
+    new_employee_id: Optional[str] = None  # None = non assigné (dans remplacements)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class TemporaryReassignmentCreate(BaseModel):
+    date: str
+    assignment_id: str
+    shift_id: str
+    block_id: Optional[str] = None
+    original_employee_id: Optional[str] = None
+    new_employee_id: Optional[str] = None
+
 # ============== HELPER FUNCTIONS ==============
 
 def time_to_minutes(time_str: str) -> int:
