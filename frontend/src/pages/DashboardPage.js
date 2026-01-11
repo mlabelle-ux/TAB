@@ -48,6 +48,9 @@ const SCHEDULE_START_HOUR = 5;
 const SCHEDULE_END_HOUR = 19; // 19h00 = 18h59 max
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR; // 14 heures
 
+// Dynamic pixel calculation - will be calculated based on available space
+const MIN_PIXELS_PER_HOUR = 60;
+
 // Column widths - Conducteur élargi
 const DRIVER_COL_WIDTH = 200;
 const CIRCUIT_COL_WIDTH = 70;
