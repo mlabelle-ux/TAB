@@ -26,7 +26,8 @@ export const formatHoursMinutes = (totalMinutes) => {
 
 // Date utilities
 export const formatDate = (dateStr) => {
-  const date = new Date(dateStr + 'T00:00:00');
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
   return date.toLocaleDateString('fr-CA', {
     weekday: 'short',
     day: 'numeric',
@@ -35,7 +36,8 @@ export const formatDate = (dateStr) => {
 };
 
 export const formatDateShort = (dateStr) => {
-  const date = new Date(dateStr + 'T00:00:00');
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
   return date.toLocaleDateString('fr-CA', {
     day: 'numeric',
     month: 'short'
