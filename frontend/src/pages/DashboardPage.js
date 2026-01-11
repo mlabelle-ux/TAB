@@ -756,6 +756,18 @@ export default function DashboardPage() {
     );
   };
 
+  const handleDeleteTask = async (taskId, taskName) => {
+    if (window.confirm(`Supprimer la tâche "${taskName}" ?`)) {
+      try {
+        await deleteTemporaryTask(taskId);
+        toast.success(`Tâche "${taskName}" supprimée`);
+        fetchData();
+      } catch (error) {
+        toast.error('Erreur lors de la suppression');
+      }
+    }
+  };
+
   const renderTaskBlock = (task, isDragging) => {
     const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
     const startMinutes = timeToMinutes(task.start_time);
@@ -767,21 +779,45 @@ export default function DashboardPage() {
     const textColor = getContrastColor(bgColor);
 
     return (
-      <div
-        className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border-2 border-dashed font-medium transition-all select-none ${isDragging ? 'opacity-50 cursor-grabbing' : 'cursor-grab hover:shadow-lg'}`}
-        style={{
-          left: Math.max(0, left),
-          width: Math.max(45, width),
-          top: 4,
-          height: ROW_HEIGHT - 8,
-          backgroundColor: bgColor,
-          color: textColor,
-          borderColor: textColor,
-        }}
-      >
-        <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
-        <span className="truncate">{task.name}</span>
-      </div>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border-2 border-dashed font-medium transition-all select-none ${isDragging ? 'opacity-50 cursor-grabbing' : 'cursor-grab hover:shadow-lg'}`}
+              style={{
+                left: Math.max(0, left),
+                width: Math.max(45, width),
+                top: 4,
+                height: ROW_HEIGHT - 8,
+                backgroundColor: bgColor,
+                color: textColor,
+                borderColor: textColor,
+              }}
+            >
+              <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
+              <span className="truncate">{task.name}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="p-0">
+            <div className="text-xs p-2 space-y-2">
+              <div className="font-bold">{task.name}</div>
+              <div>Horaire: {task.start_time} - {task.end_time}</div>
+              <div>Date: {task.date}</div>
+              {task.school_name && <div>École: {task.school_name}</div>}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteTask(task.id, task.name);
+                }}
+                className="w-full mt-1 px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs flex items-center justify-center gap-1"
+              >
+                <Trash2 className="h-3 w-3" />
+                Supprimer
+              </button>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   };
 
