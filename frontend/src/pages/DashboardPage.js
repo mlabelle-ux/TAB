@@ -602,8 +602,9 @@ export default function DashboardPage() {
                 {/* Scrollable Time Header - Synchronized with body */}
                 <div 
                   ref={headerScrollRef}
-                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
                   style={{ minWidth: 0 }}
+                  onScroll={handleScheduleScroll}
                 >
                   <div 
                     className="relative h-10 bg-muted/70"
