@@ -1148,45 +1148,84 @@ export default function DashboardPage() {
                         // Abbreviated: Render shifts instead of individual blocks
                         empOriginalAssignments.forEach(assignment => {
                           assignment.shifts?.forEach(shift => {
-                            const effectiveEmp = shift.is_admin 
-                              ? getEffectiveEmployeeId(assignment, shift.id, null)
-                              : (shift.blocks || []).some(b => {
-                                  if (b.days && b.days.length > 0 && !b.days.includes(dayLetter)) return false;
-                                  return getEffectiveEmployeeId(assignment, shift.id, b.id) === emp.id;
-                                }) ? emp.id : null;
-                            
-                            if (effectiveEmp === emp.id) {
-                              const isReassigned = isBlockReassigned(assignment, shift.id, shift.is_admin ? null : shift.blocks?.[0]?.id);
-                              renderElements.push({
-                                type: 'shift',
-                                assignment,
-                                shift,
-                                isReassigned
+                            if (shift.is_admin) {
+                              const effectiveEmp = getEffectiveEmployeeId(assignment, shift.id, null);
+                              if (effectiveEmp === emp.id) {
+                                renderElements.push({
+                                  type: 'shift',
+                                  assignment,
+                                  shift,
+                                  isReassigned: isBlockReassigned(assignment, shift.id, null)
+                                });
+                              }
+                            } else {
+                              // For regular shifts, check if ALL blocks for this day belong to this employee
+                              const blocksForToday = (shift.blocks || []).filter(b => {
+                                if (b.days && b.days.length > 0 && !b.days.includes(dayLetter)) return false;
+                                return true;
                               });
+                              
+                              if (blocksForToday.length === 0) return;
+                              
+                              // Check if all blocks belong to this employee
+                              const allBlocksBelongToEmp = blocksForToday.every(b => 
+                                getEffectiveEmployeeId(assignment, shift.id, b.id) === emp.id
+                              );
+                              
+                              if (allBlocksBelongToEmp) {
+                                const anyBlockReassigned = blocksForToday.some(b => 
+                                  isBlockReassigned(assignment, shift.id, b.id)
+                                );
+                                renderElements.push({
+                                  type: 'shift',
+                                  assignment,
+                                  shift,
+                                  isReassigned: anyBlockReassigned
+                                });
+                              }
                             }
                           });
                         });
                         
-                        // Add shifts reassigned TO this employee
+                        // Add shifts reassigned TO this employee (all blocks must be reassigned to this emp)
+                        const shiftReassignments = {};
                         Object.values(reassignmentIndex).forEach(r => {
                           if (r.date === selectedDate && r.new_employee_id === emp.id) {
                             const assignment = assignments.find(a => a.id === r.assignment_id);
                             if (assignment && assignment.employee_id !== emp.id) {
-                              const shift = assignment.shifts?.find(s => s.id === r.shift_id);
-                              if (shift) {
-                                // Check if we already added this shift
-                                const alreadyAdded = renderElements.some(el => 
-                                  el.type === 'shift' && el.assignment.id === assignment.id && el.shift.id === shift.id
-                                );
-                                if (!alreadyAdded) {
-                                  renderElements.push({
-                                    type: 'shift',
-                                    assignment,
-                                    shift,
-                                    isReassigned: true
-                                  });
-                                }
+                              const key = `${assignment.id}-${r.shift_id}`;
+                              if (!shiftReassignments[key]) {
+                                shiftReassignments[key] = { assignment, shiftId: r.shift_id, blocks: [] };
                               }
+                              shiftReassignments[key].blocks.push(r.block_id);
+                            }
+                          }
+                        });
+                        
+                        Object.values(shiftReassignments).forEach(({ assignment, shiftId, blocks }) => {
+                          const shift = assignment.shifts?.find(s => s.id === shiftId);
+                          if (!shift) return;
+                          
+                          // Check if all blocks for today are reassigned to this employee
+                          const blocksForToday = (shift.blocks || []).filter(b => {
+                            if (b.days && b.days.length > 0 && !b.days.includes(dayLetter)) return false;
+                            return true;
+                          });
+                          
+                          const allBlocksReassigned = blocksForToday.length > 0 && 
+                            blocksForToday.every(b => blocks.includes(b.id));
+                          
+                          if (allBlocksReassigned || shift.is_admin) {
+                            const alreadyAdded = renderElements.some(el => 
+                              el.type === 'shift' && el.assignment.id === assignment.id && el.shift.id === shift.id
+                            );
+                            if (!alreadyAdded) {
+                              renderElements.push({
+                                type: 'shift',
+                                assignment,
+                                shift,
+                                isReassigned: true
+                              });
                             }
                           }
                         });
