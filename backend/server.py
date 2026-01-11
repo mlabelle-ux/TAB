@@ -264,8 +264,9 @@ def calculate_daily_hours_no_overlap(assignments: list, temp_tasks: list, date_s
         for shift in assignment.get('shifts', []):
             if shift.get('is_admin'):
                 has_admin_shift = True
-                # Admin shifts are 8h fixed, add as 6:00-14:00 interval for merging purposes
-                intervals.append((6 * 60, 14 * 60))
+                # Admin shifts use their defined hours
+                admin_hours = shift.get('admin_hours', 8)
+                intervals.append((6 * 60, 6 * 60 + admin_hours * 60))
             else:
                 for block in shift.get('blocks', []):
                     # Check if block applies to this day
@@ -287,6 +288,121 @@ def calculate_daily_hours_no_overlap(assignments: list, temp_tasks: list, date_s
     if holidays and date_str in holidays:
         if has_admin_shift:
             return 8 * 60  # Only admin hours count on holidays
+        return 0
+    
+    # Merge overlapping intervals
+    merged = merge_time_intervals(intervals)
+    
+    # Calculate total minutes
+    total = sum(end - start for start, end in merged)
+    
+    return total
+
+def calculate_daily_hours_with_reassignments(
+    emp_id: str,
+    emp_assignments: list,
+    emp_temp_tasks: list,
+    date_str: str,
+    holidays: set,
+    reassignment_index: dict,
+    all_assignments: list
+) -> int:
+    """
+    Calculate total minutes worked considering temporary reassignments.
+    - Subtract hours for blocks reassigned AWAY from this employee
+    - Add hours for blocks reassigned TO this employee
+    """
+    day_letter = get_day_letter(date_str)
+    
+    # Collect all time intervals
+    intervals = []
+    has_admin_shift = False
+    
+    # 1. Process original assignments for this employee
+    for assignment in emp_assignments:
+        if not (assignment.get('start_date') <= date_str <= assignment.get('end_date')):
+            continue
+        
+        for shift in assignment.get('shifts', []):
+            if shift.get('is_admin'):
+                # Check if this admin shift was reassigned away
+                key = f"{date_str}-{assignment['id']}-{shift['id']}-"
+                reassignment = reassignment_index.get(key)
+                
+                if reassignment and reassignment.get('new_employee_id') != emp_id:
+                    # Reassigned away - skip this shift
+                    continue
+                
+                has_admin_shift = True
+                admin_hours = shift.get('admin_hours', 8)
+                intervals.append((6 * 60, 6 * 60 + admin_hours * 60))
+            else:
+                for block in shift.get('blocks', []):
+                    # Check if block applies to this day
+                    if day_letter not in block.get('days', ['L', 'M', 'W', 'J', 'V']):
+                        continue
+                    
+                    # Check if this block was reassigned away
+                    key = f"{date_str}-{assignment['id']}-{shift['id']}-{block['id']}"
+                    reassignment = reassignment_index.get(key)
+                    
+                    if reassignment and reassignment.get('new_employee_id') != emp_id:
+                        # Reassigned away - skip this block
+                        continue
+                    
+                    start = time_to_minutes(block['start_time']) - block.get('hlp_before', 0)
+                    end = time_to_minutes(block['end_time']) + block.get('hlp_after', 0)
+                    intervals.append((start, end))
+    
+    # 2. Add blocks reassigned TO this employee from other employees
+    for key, reassignment in reassignment_index.items():
+        if reassignment.get('date') != date_str:
+            continue
+        if reassignment.get('new_employee_id') != emp_id:
+            continue
+        if reassignment.get('original_employee_id') == emp_id:
+            # Same employee - already counted above
+            continue
+        
+        # Find the original assignment
+        assignment = next((a for a in all_assignments if a['id'] == reassignment['assignment_id']), None)
+        if not assignment:
+            continue
+        if not (assignment.get('start_date') <= date_str <= assignment.get('end_date')):
+            continue
+        
+        shift = next((s for s in assignment.get('shifts', []) if s['id'] == reassignment['shift_id']), None)
+        if not shift:
+            continue
+        
+        if shift.get('is_admin'):
+            has_admin_shift = True
+            admin_hours = shift.get('admin_hours', 8)
+            intervals.append((6 * 60, 6 * 60 + admin_hours * 60))
+        else:
+            block_id = reassignment.get('block_id')
+            if block_id:
+                block = next((b for b in shift.get('blocks', []) if b['id'] == block_id), None)
+                if block:
+                    # Check if block applies to this day
+                    if day_letter not in block.get('days', ['L', 'M', 'W', 'J', 'V']):
+                        continue
+                    
+                    start = time_to_minutes(block['start_time']) - block.get('hlp_before', 0)
+                    end = time_to_minutes(block['end_time']) + block.get('hlp_after', 0)
+                    intervals.append((start, end))
+    
+    # 3. Add temporary tasks
+    for task in emp_temp_tasks:
+        if task.get('date') == date_str:
+            start = time_to_minutes(task['start_time'])
+            end = time_to_minutes(task['end_time'])
+            intervals.append((start, end))
+    
+    # Check if holiday (admin shifts are not affected)
+    if holidays and date_str in holidays:
+        if has_admin_shift:
+            return 8 * 60
         return 0
     
     # Merge overlapping intervals
