@@ -14,7 +14,8 @@ import {
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { ScrollArea } from '../components/ui/scroll-area';
-import { Plus, Edit, Trash2, Search, UserPlus, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Checkbox } from '../components/ui/checkbox';
+import { Plus, Edit, Trash2, Search, UserPlus, ArrowUpDown, ArrowUp, ArrowDown, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function EmployeesPage({ employees, onUpdate }) {
