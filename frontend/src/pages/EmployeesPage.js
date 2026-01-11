@@ -254,9 +254,19 @@ export default function EmployeesPage({ employees, onUpdate }) {
               </TableHeader>
               <TableBody>
                 {filteredAndSortedEmployees.map((emp) => (
-                  <TableRow key={emp.id} data-testid={`employee-row-${emp.id}`}>
+                  <TableRow key={emp.id} data-testid={`employee-row-${emp.id}`} className={emp.is_inactive ? 'opacity-50 bg-muted/30' : ''}>
                     <TableCell className="font-mono">{emp.matricule || '-'}</TableCell>
-                    <TableCell className="font-medium">{emp.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <span className="flex items-center gap-2">
+                        {emp.name}
+                        {emp.is_inactive && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            <UserX className="h-3 w-3 mr-1" />
+                            Inactif
+                          </Badge>
+                        )}
+                      </span>
+                    </TableCell>
                     <TableCell>{emp.hire_date}</TableCell>
                     <TableCell>{emp.email || '-'}</TableCell>
                     <TableCell>{emp.phone || '-'}</TableCell>
