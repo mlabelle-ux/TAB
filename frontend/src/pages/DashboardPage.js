@@ -12,10 +12,6 @@ import {
   getContrastColor, formatDate 
 } from '../lib/utils';
 import { Button } from '../components/ui/button';
-import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, 
-  DialogDescription, DialogFooter 
-} from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import {
@@ -71,7 +67,7 @@ const generateTimeMarkers = (pixelsPerHour) => {
 };
 
 const getDayLetter = (dateStr) => {
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr + 'T12:00:00');
   return ['D', 'L', 'M', 'W', 'J', 'V', 'S'][d.getDay()];
 };
 
@@ -125,7 +121,11 @@ export default function DashboardPage() {
     const day = today.getDay();
     if (day === 0) today.setDate(today.getDate() + 1);
     if (day === 6) today.setDate(today.getDate() + 2);
-    return today.toISOString().split('T')[0];
+    // Use local date to avoid timezone issues
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const dayNum = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${dayNum}`;
   });
   const [weekDates, setWeekDates] = useState([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -176,7 +176,9 @@ export default function DashboardPage() {
       const [empRes, schRes, assRes, taskRes, absRes, holRes, schedRes] = await Promise.all([
         getEmployees(), getSchools(), getAssignments(), getTemporaryTasks(), getAbsences(), getHolidays(), getSchedule({ week_start: monday })
       ]);
-      setEmployees(empRes.data);
+      // Filter out inactive employees
+      const activeEmployees = (empRes.data || []).filter(e => !e.is_inactive);
+      setEmployees(activeEmployees);
       setSchools(schRes.data);
       setAssignments(assRes.data);
       setTempTasks(taskRes.data);
@@ -212,8 +214,20 @@ export default function DashboardPage() {
     return !!reassignmentIndex[key];
   }, [selectedDate, reassignmentIndex]);
   
+  // Check if a block is unassigned (moved to replacement zone)
+  const isBlockInReplacements = useCallback((assignment, shiftId, blockId) => {
+    const key = `${selectedDate}-${assignment.id}-${shiftId}-${blockId || ''}`;
+    const reassignment = reassignmentIndex[key];
+    return reassignment && reassignment.new_employee_id === null;
+  }, [selectedDate, reassignmentIndex]);
+  
+  // Filter active employees only
+  const activeEmployees = useMemo(() => {
+    return employees.filter(e => !e.is_inactive);
+  }, [employees]);
+  
   const sortedEmployees = useMemo(() => {
-    return [...employees].sort((a, b) => {
+    return [...activeEmployees].sort((a, b) => {
       if (sortMode === 'name') return a.name.localeCompare(b.name);
       const aAssignments = assignments.filter(ass => ass.employee_id === a.id);
       const bAssignments = assignments.filter(ass => ass.employee_id === b.id);
@@ -226,14 +240,14 @@ export default function DashboardPage() {
       if (aCircuit !== bCircuit) return aCircuit - bCircuit;
       return a.name.localeCompare(b.name);
     });
-  }, [employees, assignments, sortMode]);
+  }, [activeEmployees, assignments, sortMode]);
   
   // Check if employee is absent
   const isEmployeeAbsent = useCallback((employeeId) => {
     return absences.some(a => a.employee_id === employeeId && a.start_date <= selectedDate && a.end_date >= selectedDate);
   }, [absences, selectedDate]);
   
-  // Get all unassigned/absent items for the replacement row - positioned by time
+  // Get all items for the replacement row - includes unassigned + absent + temp reassigned to null
   const replacementItems = useMemo(() => {
     const items = [];
     const dayLetter = getDayLetter(selectedDate);
@@ -245,34 +259,27 @@ export default function DashboardPage() {
       
       a.shifts?.forEach(shift => {
         if (shift.is_admin) {
-          // Check if not already reassigned
-          const key = `${selectedDate}-${a.id}-${shift.id}-`;
-          if (!reassignmentIndex[key]) {
+          items.push({
+            type: 'unassigned_block',
+            assignment: a,
+            shift,
+            block: null,
+            startTime: '06:00',
+            endTime: '14:00',
+            id: `unassigned-${a.id}-${shift.id}`
+          });
+        } else {
+          shift.blocks?.forEach(block => {
+            if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
             items.push({
               type: 'unassigned_block',
               assignment: a,
               shift,
-              block: null,
-              startTime: '06:00',
-              endTime: '14:00',
-              id: `unassigned-${a.id}-${shift.id}`
+              block,
+              startTime: block.start_time,
+              endTime: block.end_time,
+              id: `unassigned-${a.id}-${shift.id}-${block.id}`
             });
-          }
-        } else {
-          shift.blocks?.forEach(block => {
-            if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
-            const key = `${selectedDate}-${a.id}-${shift.id}-${block.id}`;
-            if (!reassignmentIndex[key]) {
-              items.push({
-                type: 'unassigned_block',
-                assignment: a,
-                shift,
-                block,
-                startTime: block.start_time,
-                endTime: block.end_time,
-                id: `unassigned-${a.id}-${shift.id}-${block.id}`
-              });
-            }
           });
         }
       });
@@ -281,10 +288,13 @@ export default function DashboardPage() {
     // Add blocks from absent employees for today
     absent_items.filter(item => item.date === selectedDate).forEach((item) => {
       const assignment = item.data;
+      // Check if not already reassigned to someone else
       assignment.shifts?.forEach(shift => {
         if (shift.is_admin) {
           const key = `${selectedDate}-${assignment.id}-${shift.id}-`;
-          if (!reassignmentIndex[key]) {
+          const reassignment = reassignmentIndex[key];
+          // Show if no reassignment or reassigned to null (in replacements)
+          if (!reassignment || reassignment.new_employee_id === null) {
             items.push({
               type: 'absent_block',
               assignment,
@@ -300,7 +310,9 @@ export default function DashboardPage() {
           shift.blocks?.forEach(block => {
             if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
             const key = `${selectedDate}-${assignment.id}-${shift.id}-${block.id}`;
-            if (!reassignmentIndex[key]) {
+            const reassignment = reassignmentIndex[key];
+            // Show if no reassignment or reassigned to null (in replacements)
+            if (!reassignment || reassignment.new_employee_id === null) {
               items.push({
                 type: 'absent_block',
                 assignment,
@@ -315,6 +327,41 @@ export default function DashboardPage() {
           });
         }
       });
+    });
+    
+    // Add blocks that were temporarily moved to replacements (new_employee_id = null)
+    Object.values(reassignmentIndex).forEach(r => {
+      if (r.date === selectedDate && r.new_employee_id === null) {
+        const assignment = assignments.find(a => a.id === r.assignment_id);
+        if (assignment && assignment.employee_id) {
+          // Only add if not already in absent items
+          const alreadyAdded = items.some(item => 
+            item.assignment?.id === assignment.id && 
+            item.shift?.id === r.shift_id &&
+            (item.block?.id || null) === r.block_id
+          );
+          if (!alreadyAdded) {
+            const shift = assignment.shifts?.find(s => s.id === r.shift_id);
+            if (shift) {
+              const block = shift.blocks?.find(b => b.id === r.block_id) || null;
+              if (block) {
+                if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
+              }
+              const originalEmp = activeEmployees.find(e => e.id === r.original_employee_id);
+              items.push({
+                type: 'temp_unassigned_block',
+                assignment,
+                shift,
+                block,
+                startTime: block ? block.start_time : '06:00',
+                endTime: block ? block.end_time : '14:00',
+                originalEmployee: originalEmp?.name || '',
+                id: `temp-unassigned-${assignment.id}-${shift.id}-${block?.id || 'admin'}`
+              });
+            }
+          }
+        }
+      }
     });
     
     // Add unassigned temp tasks
@@ -332,26 +379,45 @@ export default function DashboardPage() {
     items.sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     
     return items;
-  }, [replacements, tempTasks, selectedDate, reassignmentIndex]);
+  }, [replacements, tempTasks, selectedDate, reassignmentIndex, assignments, activeEmployees]);
   
-  const goToPreviousWeek = () => { const d = new Date(selectedDate); d.setDate(d.getDate() - 7); setSelectedDate(d.toISOString().split('T')[0]); };
-  const goToNextWeek = () => { const d = new Date(selectedDate); d.setDate(d.getDate() + 7); setSelectedDate(d.toISOString().split('T')[0]); };
+  const goToPreviousWeek = () => { 
+    const d = new Date(selectedDate + 'T12:00:00'); 
+    d.setDate(d.getDate() - 7); 
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    setSelectedDate(`${year}-${month}-${day}`); 
+  };
+  
+  const goToNextWeek = () => { 
+    const d = new Date(selectedDate + 'T12:00:00'); 
+    d.setDate(d.getDate() + 7); 
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    setSelectedDate(`${year}-${month}-${day}`); 
+  };
+  
   const goToToday = () => {
     const today = new Date();
-    const day = today.getDay();
+    let day = today.getDay();
     if (day === 0) today.setDate(today.getDate() + 1);
     if (day === 6) today.setDate(today.getDate() + 2);
-    setSelectedDate(today.toISOString().split('T')[0]);
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const dayNum = String(today.getDate()).padStart(2, '0');
+    setSelectedDate(`${year}-${month}-${dayNum}`);
   };
   
   const handleDateClick = (date) => {
     setSelectedDate(date);
   };
   
-  // Fixed calendar date selection - use UTC to avoid timezone issues
+  // Fixed calendar date selection for UTC-5 timezone
   const handleCalendarSelect = (date) => {
     if (date) {
-      // Create date string directly to avoid timezone shift
+      // Use the date object directly without timezone conversion
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
@@ -359,14 +425,12 @@ export default function DashboardPage() {
       
       // Skip weekends
       const dayOfWeek = date.getDay();
-      if (dayOfWeek === 0) {
-        const newDate = new Date(date);
-        newDate.setDate(newDate.getDate() + 1);
-        dateStr = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
-      } else if (dayOfWeek === 6) {
-        const newDate = new Date(date);
-        newDate.setDate(newDate.getDate() + 2);
-        dateStr = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
+      if (dayOfWeek === 0) { // Sunday -> Monday
+        date.setDate(date.getDate() + 1);
+        dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      } else if (dayOfWeek === 6) { // Saturday -> Monday
+        date.setDate(date.getDate() + 2);
+        dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       }
       
       setSelectedDate(dateStr);
@@ -405,13 +469,12 @@ export default function DashboardPage() {
       shiftId = dragData.shift.id;
       blockId = dragData.block?.id || null;
       originalEmployeeId = assignment.employee_id;
-    } else if (dragData.type === 'unassigned_block' || dragData.type === 'absent_block') {
+    } else if (dragData.type === 'unassigned_block' || dragData.type === 'absent_block' || dragData.type === 'temp_unassigned_block') {
       assignment = dragData.assignment;
       shiftId = dragData.shift.id;
       blockId = dragData.block?.id || null;
       originalEmployeeId = assignment.employee_id;
     } else if (dragData.type === 'task') {
-      // Tasks need separate handling - not implemented in this version
       toast.info('Le déplacement des tâches temporaires sera disponible bientôt');
       return;
     } else {
@@ -420,6 +483,12 @@ export default function DashboardPage() {
     
     // If dropping on replacement row, unassign for the day
     if (dropData.isReplacement) {
+      // Check if already in replacements
+      if (isBlockInReplacements(assignment, shiftId, blockId)) {
+        toast.info('Ce bloc est déjà dans les remplacements');
+        return;
+      }
+      
       try {
         await createTemporaryReassignment({
           date: selectedDate,
@@ -427,7 +496,7 @@ export default function DashboardPage() {
           shift_id: shiftId,
           block_id: blockId,
           original_employee_id: originalEmployeeId,
-          new_employee_id: null // null = unassigned
+          new_employee_id: null // null = unassigned (in replacements)
         });
         toast.success(`Circuit ${assignment.circuit_number} mis en remplacement pour le ${selectedDate}`);
         fetchData();
@@ -443,7 +512,7 @@ export default function DashboardPage() {
     const currentEmployeeId = getEffectiveEmployeeId(assignment, shiftId, blockId);
     if (currentEmployeeId === targetEmployeeId) return;
     
-    const targetEmployee = employees.find(e => e.id === targetEmployeeId);
+    const targetEmployee = activeEmployees.find(e => e.id === targetEmployeeId);
     if (!targetEmployee) return;
     
     // Create temporary reassignment in backend
@@ -477,6 +546,8 @@ export default function DashboardPage() {
     if (block?.days && block.days.length > 0 && !block.days.includes(dayLetter)) return null;
     
     let startMinutes, endMinutes, bgColor, label;
+    const hlpBefore = block?.hlp_before || 0;
+    const hlpAfter = block?.hlp_after || 0;
     
     if (shift.is_admin) {
       startMinutes = 6 * 60;
@@ -484,21 +555,21 @@ export default function DashboardPage() {
       bgColor = shift.name === 'MECANO' ? '#795548' : '#607D8B';
       label = shift.name;
     } else if (block) {
-      const hlpBefore = block.hlp_before || 0;
-      const hlpAfter = block.hlp_after || 0;
-      
       if (viewMode === 'complete') {
+        // Mode complet: HLP inclus dans le bloc, couleur école
         startMinutes = timeToMinutes(block.start_time) - hlpBefore;
         endMinutes = timeToMinutes(block.end_time) + hlpAfter;
         bgColor = block.school_color || '#9E9E9E';
         label = block.school_name || 'École';
       } else if (viewMode === 'abbreviated') {
+        // Mode abrégé: ne devrait pas être appelé pour les blocs individuels
+        // On affiche quand même pour compatibilité
         startMinutes = timeToMinutes(block.start_time) - hlpBefore;
         endMinutes = timeToMinutes(block.end_time) + hlpAfter;
         bgColor = '#6B7280';
-        label = assignment.circuit_number;
+        label = shift.name;
       } else {
-        // Detailed mode
+        // Mode détaillé: bloc principal sans HLP
         startMinutes = timeToMinutes(block.start_time);
         endMinutes = timeToMinutes(block.end_time);
         bgColor = block.school_color || '#9E9E9E';
@@ -537,7 +608,147 @@ export default function DashboardPage() {
               <div className="font-bold">Circuit {assignment.circuit_number} - {shift.name}</div>
               {block && <div>École: {block.school_name}</div>}
               {block && <div>Horaire: {block.start_time} - {block.end_time}</div>}
+              {block && (hlpBefore > 0 || hlpAfter > 0) && (
+                <div>HLP: {hlpBefore > 0 ? `${hlpBefore}min avant` : ''} {hlpAfter > 0 ? `${hlpAfter}min après` : ''}</div>
+              )}
               {isReassigned && <div className="text-orange-500">* Réassigné temporairement pour aujourd'hui</div>}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  // Render HLP block (for detailed view)
+  const renderHlpBlock = (block, position, minutes, pixelsPerHour) => {
+    const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
+    let startMinutes, endMinutes;
+    
+    if (position === 'before') {
+      startMinutes = timeToMinutes(block.start_time) - minutes;
+      endMinutes = timeToMinutes(block.start_time);
+    } else {
+      startMinutes = timeToMinutes(block.end_time);
+      endMinutes = timeToMinutes(block.end_time) + minutes;
+    }
+    
+    const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
+    const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
+    
+    return (
+      <div
+        key={`hlp-${position}-${block.id}`}
+        className="absolute rounded-sm text-[8px] flex items-center justify-center bg-yellow-400/80 text-yellow-900 font-medium border border-yellow-500"
+        style={{
+          left: Math.max(0, left),
+          width: Math.max(20, width),
+          top: 6,
+          height: ROW_HEIGHT - 12,
+        }}
+      >
+        HLP
+      </div>
+    );
+  };
+
+  // Render shift block for abbreviated view (grouped by shift)
+  const renderShiftBlock = (assignment, shift, dayLetter, isDragging, isReassigned) => {
+    const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
+    
+    if (shift.is_admin) {
+      const startMinutes = 6 * 60;
+      const endMinutes = startMinutes + (shift.admin_hours || 8) * 60;
+      const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
+      const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
+      const bgColor = shift.name === 'MECANO' ? '#795548' : '#607D8B';
+      
+      return (
+        <TooltipProvider key={`shift-${assignment.id}-${shift.id}`}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border font-medium transition-all select-none ${isDragging ? 'opacity-50 scale-105 shadow-xl cursor-grabbing' : 'cursor-grab hover:shadow-lg'} ${isReassigned ? 'border-2 border-dashed border-orange-500' : 'border-black/20'}`}
+                style={{
+                  left: Math.max(0, left),
+                  width: Math.max(45, width),
+                  top: 4,
+                  height: ROW_HEIGHT - 8,
+                  backgroundColor: bgColor,
+                  color: '#FFFFFF',
+                }}
+              >
+                <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
+                <span className="truncate">{shift.name}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <div className="text-xs">
+                <div className="font-bold">Circuit {assignment.circuit_number} - {shift.name}</div>
+                <div>{shift.admin_hours || 8}h</div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+    
+    // Get all blocks for this shift that apply to this day
+    const applicableBlocks = (shift.blocks || []).filter(block => {
+      if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return false;
+      return true;
+    });
+    
+    if (applicableBlocks.length === 0) return null;
+    
+    // Calculate the full extent of the shift (min start to max end including HLP)
+    let minStart = Infinity;
+    let maxEnd = 0;
+    applicableBlocks.forEach(block => {
+      const start = timeToMinutes(block.start_time) - (block.hlp_before || 0);
+      const end = timeToMinutes(block.end_time) + (block.hlp_after || 0);
+      if (start < minStart) minStart = start;
+      if (end > maxEnd) maxEnd = end;
+    });
+    
+    const left = ((minStart - scheduleStartMinutes) / 60) * pixelsPerHour;
+    const width = ((maxEnd - minStart) / 60) * pixelsPerHour;
+    
+    // Choose color based on shift type
+    let bgColor;
+    switch (shift.name) {
+      case 'AM': bgColor = '#3B82F6'; break; // Blue
+      case 'PM': bgColor = '#F97316'; break; // Orange
+      case 'MIDI': bgColor = '#10B981'; break; // Green
+      default: bgColor = '#6B7280'; // Gray
+    }
+    
+    return (
+      <TooltipProvider key={`shift-${assignment.id}-${shift.id}`}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border font-medium transition-all select-none ${isDragging ? 'opacity-50 scale-105 shadow-xl cursor-grabbing' : 'cursor-grab hover:shadow-lg'} ${isReassigned ? 'border-2 border-dashed border-orange-500' : 'border-black/20'}`}
+              style={{
+                left: Math.max(0, left),
+                width: Math.max(45, width),
+                top: 4,
+                height: ROW_HEIGHT - 8,
+                backgroundColor: bgColor,
+                color: '#FFFFFF',
+              }}
+            >
+              <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
+              <span className="truncate">{shift.name}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <div className="text-xs space-y-1">
+              <div className="font-bold">Circuit {assignment.circuit_number} - {shift.name}</div>
+              {applicableBlocks.map(block => (
+                <div key={block.id}>
+                  {block.school_name}: {block.start_time} - {block.end_time}
+                </div>
+              ))}
             </div>
           </TooltipContent>
         </Tooltip>
@@ -593,6 +804,10 @@ export default function DashboardPage() {
       bgColor = '#F59E0B'; // Amber for unassigned
       label = item.assignment.circuit_number;
       icon = <Bus className="h-3 w-3 flex-shrink-0" />;
+    } else if (item.type === 'temp_unassigned_block') {
+      bgColor = '#8B5CF6'; // Purple for temp unassigned
+      label = item.assignment.circuit_number;
+      icon = <AlertTriangle className="h-3 w-3 flex-shrink-0" />;
     } else if (item.type === 'unassigned_task') {
       bgColor = '#EC4899'; // Pink for task
       label = item.task.name;
@@ -633,7 +848,8 @@ export default function DashboardPage() {
                   <div className="font-bold">Circuit {item.assignment.circuit_number} - {item.shift.name}</div>
                   {item.block && <div>École: {item.block.school_name}</div>}
                   <div>Horaire: {item.startTime} - {item.endTime}</div>
-                  {item.originalEmployee && <div className="text-red-400">Conducteur absent: {item.originalEmployee}</div>}
+                  {item.originalEmployee && <div className="text-red-400">Conducteur: {item.originalEmployee}</div>}
+                  {item.type === 'temp_unassigned_block' && <div className="text-purple-400">Déplacé temporairement</div>}
                 </>
               )}
               <div className="text-muted-foreground">Glissez vers un conducteur pour assigner</div>
@@ -651,6 +867,12 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  // Parse selected date for calendar
+  const getCalendarSelectedDate = () => {
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    return new Date(year, month - 1, day, 12, 0, 0);
+  };
   
   return (
     <div className="min-h-screen bg-background" data-testid="dashboard-page">
@@ -713,7 +935,7 @@ export default function DashboardPage() {
                   <PopoverContent className="w-auto p-0" align="start">
                     <CalendarComponent 
                       mode="single" 
-                      selected={new Date(selectedDate + 'T12:00:00')} 
+                      selected={getCalendarSelectedDate()} 
                       onSelect={handleCalendarSelect} 
                       disabled={(date) => date.getDay() === 0 || date.getDay() === 6} 
                       initialFocus 
@@ -823,65 +1045,171 @@ export default function DashboardPage() {
                     const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
                     const weeklyMinutes = empSchedule?.weekly_total || 0;
                     const isAbsent = isEmployeeAbsent(emp.id);
+                    const dayLetter = getDayLetter(selectedDate);
                     
-                    // Get assignments for this employee (original assignments, not considering temp reassignments for display)
+                    // Get assignments for this employee
                     const empOriginalAssignments = assignments.filter(a => 
                       a.employee_id === emp.id && 
                       a.start_date <= selectedDate && 
                       a.end_date >= selectedDate
                     );
                     
-                    // Get all blocks that should show on this employee's row (original + reassigned to this employee)
-                    const dayBlocks = [];
-                    const dayLetter = getDayLetter(selectedDate);
-                    
-                    // Original assignments for this employee (not reassigned away)
-                    if (!isAbsent) {
-                      empOriginalAssignments.forEach(assignment => {
-                        assignment.shifts?.forEach(shift => {
-                          if (shift.is_admin) {
-                            const effectiveEmp = getEffectiveEmployeeId(assignment, shift.id, null);
-                            if (effectiveEmp === emp.id) {
-                              dayBlocks.push({ assignment, shift, block: null, isReassigned: false });
-                            }
-                          } else {
-                            shift.blocks?.forEach(block => {
-                              if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
-                              const effectiveEmp = getEffectiveEmployeeId(assignment, shift.id, block.id);
-                              if (effectiveEmp === emp.id) {
-                                dayBlocks.push({ assignment, shift, block, isReassigned: false });
-                              }
-                            });
-                          }
-                        });
-                      });
-                    }
-                    
-                    // Blocks reassigned TO this employee from other employees
-                    Object.values(reassignmentIndex).forEach(r => {
-                      if (r.date === selectedDate && r.new_employee_id === emp.id) {
-                        const assignment = assignments.find(a => a.id === r.assignment_id);
-                        if (assignment) {
-                          const shift = assignment.shifts?.find(s => s.id === r.shift_id);
-                          if (shift) {
-                            const block = shift.blocks?.find(b => b.id === r.block_id) || null;
-                            if (block) {
-                              if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
-                            }
-                            dayBlocks.push({ assignment, shift, block, isReassigned: true });
-                          }
-                        }
-                      }
-                    });
-                    
-                    const dayTasks = isAbsent ? [] : tempTasks.filter(t => t.employee_id === emp.id && t.date === selectedDate);
-                    
-                    // Get circuit numbers - show original circuits, but red if absent
+                    // Get circuit numbers
                     const circuitNumbers = empOriginalAssignments.map(a => a.circuit_number);
                     const hasAdaptedCircuit = empOriginalAssignments.some(a => a.is_adapted);
                     
                     const isOvertime = weeklyMinutes > 39 * 60;
                     const isUndertime = weeklyMinutes < 15 * 60 && weeklyMinutes > 0;
+                    
+                    // Collect blocks/shifts to render based on view mode
+                    const renderElements = [];
+                    
+                    if (!isAbsent) {
+                      if (viewMode === 'abbreviated') {
+                        // Abbreviated: Render shifts instead of individual blocks
+                        empOriginalAssignments.forEach(assignment => {
+                          assignment.shifts?.forEach(shift => {
+                            const effectiveEmp = shift.is_admin 
+                              ? getEffectiveEmployeeId(assignment, shift.id, null)
+                              : (shift.blocks || []).some(b => {
+                                  if (b.days && b.days.length > 0 && !b.days.includes(dayLetter)) return false;
+                                  return getEffectiveEmployeeId(assignment, shift.id, b.id) === emp.id;
+                                }) ? emp.id : null;
+                            
+                            if (effectiveEmp === emp.id) {
+                              const isReassigned = isBlockReassigned(assignment, shift.id, shift.is_admin ? null : shift.blocks?.[0]?.id);
+                              renderElements.push({
+                                type: 'shift',
+                                assignment,
+                                shift,
+                                isReassigned
+                              });
+                            }
+                          });
+                        });
+                        
+                        // Add shifts reassigned TO this employee
+                        Object.values(reassignmentIndex).forEach(r => {
+                          if (r.date === selectedDate && r.new_employee_id === emp.id) {
+                            const assignment = assignments.find(a => a.id === r.assignment_id);
+                            if (assignment && assignment.employee_id !== emp.id) {
+                              const shift = assignment.shifts?.find(s => s.id === r.shift_id);
+                              if (shift) {
+                                // Check if we already added this shift
+                                const alreadyAdded = renderElements.some(el => 
+                                  el.type === 'shift' && el.assignment.id === assignment.id && el.shift.id === shift.id
+                                );
+                                if (!alreadyAdded) {
+                                  renderElements.push({
+                                    type: 'shift',
+                                    assignment,
+                                    shift,
+                                    isReassigned: true
+                                  });
+                                }
+                              }
+                            }
+                          }
+                        });
+                      } else {
+                        // Detailed or Complete: Render individual blocks
+                        empOriginalAssignments.forEach(assignment => {
+                          assignment.shifts?.forEach(shift => {
+                            if (shift.is_admin) {
+                              const effectiveEmp = getEffectiveEmployeeId(assignment, shift.id, null);
+                              if (effectiveEmp === emp.id) {
+                                renderElements.push({
+                                  type: 'block',
+                                  assignment,
+                                  shift,
+                                  block: null,
+                                  isReassigned: isBlockReassigned(assignment, shift.id, null)
+                                });
+                              }
+                            } else {
+                              (shift.blocks || []).forEach(block => {
+                                if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
+                                const effectiveEmp = getEffectiveEmployeeId(assignment, shift.id, block.id);
+                                if (effectiveEmp === emp.id) {
+                                  renderElements.push({
+                                    type: 'block',
+                                    assignment,
+                                    shift,
+                                    block,
+                                    isReassigned: isBlockReassigned(assignment, shift.id, block.id)
+                                  });
+                                  
+                                  // Add HLP blocks for detailed view
+                                  if (viewMode === 'detailed') {
+                                    if (block.hlp_before > 0) {
+                                      renderElements.push({
+                                        type: 'hlp',
+                                        block,
+                                        position: 'before',
+                                        minutes: block.hlp_before
+                                      });
+                                    }
+                                    if (block.hlp_after > 0) {
+                                      renderElements.push({
+                                        type: 'hlp',
+                                        block,
+                                        position: 'after',
+                                        minutes: block.hlp_after
+                                      });
+                                    }
+                                  }
+                                }
+                              });
+                            }
+                          });
+                        });
+                        
+                        // Add blocks reassigned TO this employee
+                        Object.values(reassignmentIndex).forEach(r => {
+                          if (r.date === selectedDate && r.new_employee_id === emp.id) {
+                            const assignment = assignments.find(a => a.id === r.assignment_id);
+                            if (assignment && assignment.employee_id !== emp.id) {
+                              const shift = assignment.shifts?.find(s => s.id === r.shift_id);
+                              if (shift) {
+                                const block = r.block_id ? shift.blocks?.find(b => b.id === r.block_id) : null;
+                                if (block) {
+                                  if (block.days && block.days.length > 0 && !block.days.includes(dayLetter)) return;
+                                }
+                                renderElements.push({
+                                  type: 'block',
+                                  assignment,
+                                  shift,
+                                  block,
+                                  isReassigned: true
+                                });
+                                
+                                // Add HLP for detailed view
+                                if (viewMode === 'detailed' && block) {
+                                  if (block.hlp_before > 0) {
+                                    renderElements.push({
+                                      type: 'hlp',
+                                      block,
+                                      position: 'before',
+                                      minutes: block.hlp_before
+                                    });
+                                  }
+                                  if (block.hlp_after > 0) {
+                                    renderElements.push({
+                                      type: 'hlp',
+                                      block,
+                                      position: 'after',
+                                      minutes: block.hlp_after
+                                    });
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        });
+                      }
+                    }
+                    
+                    const dayTasks = isAbsent ? [] : tempTasks.filter(t => t.employee_id === emp.id && t.date === selectedDate);
                     
                     return (
                       <DroppableRow key={emp.id} id={`employee-${emp.id}`} employeeId={emp.id}>
@@ -904,16 +1232,33 @@ export default function DashboardPage() {
                               <div key={marker.hour} className="absolute top-0 bottom-0 border-l border-border/40" style={{ left: marker.position }} />
                             ))}
                             
-                            {/* Assignment blocks */}
-                            {dayBlocks.map(({ assignment, shift, block, isReassigned }, idx) => (
-                              <DraggableBlock
-                                key={`${assignment.id}-${shift.id}-${block?.id || 'admin'}-${idx}`}
-                                id={`${assignment.id}-${shift.id}-${block?.id || 'admin'}`}
-                                data={{ type: 'assignment', assignment, shift, block }}
-                              >
-                                {(isDragging) => renderBlock(assignment, shift, block, isDragging, emp.id, isReassigned)}
-                              </DraggableBlock>
-                            ))}
+                            {/* Render elements based on type */}
+                            {renderElements.map((el, idx) => {
+                              if (el.type === 'shift') {
+                                return (
+                                  <DraggableBlock
+                                    key={`shift-${el.assignment.id}-${el.shift.id}-${idx}`}
+                                    id={`${el.assignment.id}-${el.shift.id}`}
+                                    data={{ type: 'assignment', assignment: el.assignment, shift: el.shift, block: null }}
+                                  >
+                                    {(isDragging) => renderShiftBlock(el.assignment, el.shift, dayLetter, isDragging, el.isReassigned)}
+                                  </DraggableBlock>
+                                );
+                              } else if (el.type === 'block') {
+                                return (
+                                  <DraggableBlock
+                                    key={`block-${el.assignment.id}-${el.shift.id}-${el.block?.id || 'admin'}-${idx}`}
+                                    id={`${el.assignment.id}-${el.shift.id}-${el.block?.id || 'admin'}`}
+                                    data={{ type: 'assignment', assignment: el.assignment, shift: el.shift, block: el.block }}
+                                  >
+                                    {(isDragging) => renderBlock(el.assignment, el.shift, el.block, isDragging, emp.id, el.isReassigned)}
+                                  </DraggableBlock>
+                                );
+                              } else if (el.type === 'hlp') {
+                                return renderHlpBlock(el.block, el.position, el.minutes, pixelsPerHour);
+                              }
+                              return null;
+                            })}
                             
                             {/* Task blocks */}
                             {dayTasks.map(task => (
@@ -954,7 +1299,7 @@ export default function DashboardPage() {
                 {activeId && activeDragData && (
                   <div className="bg-[#4CAF50] text-white px-4 py-2 rounded-lg shadow-2xl font-medium text-sm flex items-center gap-2">
                     <GripVertical className="h-4 w-4" />
-                    {activeDragData.type === 'assignment' || activeDragData.type === 'unassigned_block' || activeDragData.type === 'absent_block'
+                    {activeDragData.type === 'assignment' || activeDragData.type === 'unassigned_block' || activeDragData.type === 'absent_block' || activeDragData.type === 'temp_unassigned_block'
                       ? `Circuit ${activeDragData.assignment.circuit_number}` 
                       : activeDragData.type === 'task'
                         ? activeDragData.task?.name
@@ -968,13 +1313,13 @@ export default function DashboardPage() {
         
         {activeTab === 'employees' && <EmployeesPage employees={employees} onUpdate={fetchData} />}
         {activeTab === 'schools' && <SchoolsPage schools={schools} onUpdate={fetchData} />}
-        {activeTab === 'assignments' && <AssignmentsPage assignments={assignments} employees={employees} schools={schools} onUpdate={fetchData} />}
-        {activeTab === 'absences' && <AbsencesPage absences={absences} employees={employees} onUpdate={fetchData} />}
+        {activeTab === 'assignments' && <AssignmentsPage assignments={assignments} employees={activeEmployees} schools={schools} onUpdate={fetchData} />}
+        {activeTab === 'absences' && <AbsencesPage absences={absences} employees={activeEmployees} onUpdate={fetchData} />}
         {activeTab === 'holidays' && <HolidaysPage holidays={holidays} onUpdate={fetchData} />}
-        {activeTab === 'reports' && <ReportsPage employees={employees} />}
+        {activeTab === 'reports' && <ReportsPage employees={activeEmployees} />}
       </main>
       
-      <TemporaryTaskModal open={showTempTaskModal} onClose={() => setShowTempTaskModal(false)} onSuccess={handleTempTaskCreated} employees={employees} schools={schools} selectedDate={selectedDate} />
+      <TemporaryTaskModal open={showTempTaskModal} onClose={() => setShowTempTaskModal(false)} onSuccess={handleTempTaskCreated} employees={activeEmployees} schools={schools} selectedDate={selectedDate} />
     </div>
   );
 }
