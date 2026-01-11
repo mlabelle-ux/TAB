@@ -42,6 +42,7 @@ export const deleteTemporaryTask = (id) => api.delete(`/temporary-tasks/${id}`);
 // Absences
 export const getAbsences = () => api.get('/absences');
 export const createAbsence = (data) => api.post('/absences', data);
+export const updateAbsence = (id, data) => api.put(`/absences/${id}`, data);
 export const deleteAbsence = (id) => api.delete(`/absences/${id}`);
 
 // Holidays
