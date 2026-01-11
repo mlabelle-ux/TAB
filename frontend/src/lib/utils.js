@@ -44,28 +44,39 @@ export const formatDateShort = (dateStr) => {
 
 export const getWeekDates = (startDate) => {
   const dates = [];
-  const start = new Date(startDate);
+  // Parse date string properly to avoid timezone issues
+  const [year, month, day] = startDate.split('-').map(Number);
+  const start = new Date(year, month - 1, day, 12, 0, 0);
   
   // Find Monday of the week
-  const day = start.getDay();
-  const diff = start.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(start.setDate(diff));
+  const dayOfWeek = start.getDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days, otherwise go to Monday
+  const monday = new Date(start);
+  monday.setDate(start.getDate() + diff);
   
   for (let i = 0; i < 5; i++) {
     const date = new Date(monday);
     date.setDate(monday.getDate() + i);
-    dates.push(date.toISOString().split('T')[0]);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    dates.push(`${y}-${m}-${d}`);
   }
   
   return dates;
 };
 
-export const getMonday = (date) => {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  return d.toISOString().split('T')[0];
+export const getMonday = (dateStr) => {
+  // Parse date string properly to avoid timezone issues
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(year, month - 1, day, 12, 0, 0);
+  const dayOfWeek = d.getDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  d.setDate(d.getDate() + diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 };
 
 export const isWeekend = (dateStr) => {
