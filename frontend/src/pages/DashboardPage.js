@@ -417,7 +417,8 @@ export default function DashboardPage() {
       if (containerRef.current) {
         const containerWidth = containerRef.current.offsetWidth;
         const availableWidth = containerWidth - FIXED_LEFT_WIDTH - FIXED_RIGHT_WIDTH - 40; // 40px for padding/borders
-        const calculatedPixelsPerHour = Math.max(60, availableWidth / TOTAL_HOURS);
+        // Élargir les colonnes de 25% (multiplier par 1.25)
+        const calculatedPixelsPerHour = Math.max(75, (availableWidth / TOTAL_HOURS) * 1.25);
         setPixelsPerHour(calculatedPixelsPerHour);
       }
     };
