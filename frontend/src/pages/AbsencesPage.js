@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createAbsence, deleteAbsence } from '../lib/api';
 import api from '../lib/api';
 import { Button } from '../components/ui/button';
@@ -28,6 +28,7 @@ const SHIFT_TYPES = [
   { id: 'MIDI', label: 'MIDI' },
   { id: 'PM', label: 'PM (Après-midi)' },
   { id: 'ADMIN', label: 'Admin' },
+  { id: 'MECANO', label: 'Mécano' },
 ];
 
 export default function AbsencesPage({ absences, employees, onUpdate }) {
@@ -41,6 +42,11 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
     shift_types: [] // Empty = all shifts
   });
   const [allShifts, setAllShifts] = useState(true);
+
+  // Trier les employés par ordre alphabétique
+  const sortedEmployees = useMemo(() => {
+    return [...employees].sort((a, b) => a.name.localeCompare(b.name));
+  }, [employees]);
 
   const sortedAbsences = [...absences].sort((a, b) => 
     new Date(b.start_date) - new Date(a.start_date)
