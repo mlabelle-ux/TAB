@@ -164,11 +164,13 @@ class Holiday(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     date: str
+    type: str = "ferie"  # 'ferie' or 'conge'
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class HolidayCreate(BaseModel):
     name: str
     date: str
+    type: str = "ferie"
 
 # ============== HELPER FUNCTIONS ==============
 
