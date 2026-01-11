@@ -828,7 +828,9 @@ async def get_schedule(date: str = None, week_start: str = None):
             "absent_items": replacement_items
         },
         "week_dates": week_dates,
-        "holidays": list(holiday_dates)
+        "holidays": list(holiday_dates),
+        "temporary_reassignments": temp_reassignments,
+        "reassignment_index": reassignment_index
     }
 
 # ============== CONFLICT CHECK ==============
