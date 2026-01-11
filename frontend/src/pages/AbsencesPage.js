@@ -281,7 +281,7 @@ export default function AbsencesPage({ absences, employees, onUpdate }) {
                     <SelectValue placeholder="Sélectionner un employé" />
                   </SelectTrigger>
                   <SelectContent>
-                    {employees.map(emp => (
+                    {sortedEmployees.map(emp => (
                       <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
                     ))}
                   </SelectContent>
