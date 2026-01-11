@@ -15,7 +15,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
-import { Plus, Trash2, CalendarOff } from 'lucide-react';
+import { Plus, Trash2, CalendarOff, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function HolidaysPage({ holidays, onUpdate }) {
@@ -25,7 +25,8 @@ export default function HolidaysPage({ holidays, onUpdate }) {
     name: '',
     date: '',
     start_date: '',
-    end_date: ''
+    end_date: '',
+    type: 'ferie' // 'ferie' or 'conge'
   });
 
   const sortedHolidays = [...holidays].sort((a, b) => 
@@ -51,11 +52,13 @@ export default function HolidaysPage({ holidays, onUpdate }) {
 
     try {
       if (dateMode === 'single') {
-        // Créer un seul jour férié
-        await createHoliday({ name: formData.name, date: formData.date });
-        toast.success('Jour férié ajouté');
+        await createHoliday({ 
+          name: formData.name, 
+          date: formData.date,
+          type: formData.type
+        });
+        toast.success(`${formData.type === 'ferie' ? 'Jour férié' : 'Congé'} ajouté`);
       } else {
-        // Créer plusieurs jours fériés pour la période
         const start = new Date(formData.start_date);
         const end = new Date(formData.end_date);
         
@@ -67,21 +70,21 @@ export default function HolidaysPage({ holidays, onUpdate }) {
         let count = 0;
         let current = new Date(start);
         while (current <= end) {
-          // Exclure les weekends
           if (current.getDay() !== 0 && current.getDay() !== 6) {
             await createHoliday({ 
               name: formData.name, 
-              date: current.toISOString().split('T')[0] 
+              date: current.toISOString().split('T')[0],
+              type: formData.type
             });
             count++;
           }
           current.setDate(current.getDate() + 1);
         }
-        toast.success(`${count} jour(s) férié(s) ajouté(s)`);
+        toast.success(`${count} jour(s) ajouté(s)`);
       }
       
       setShowModal(false);
-      setFormData({ name: '', date: '', start_date: '', end_date: '' });
+      setFormData({ name: '', date: '', start_date: '', end_date: '', type: 'ferie' });
       onUpdate();
     } catch (error) {
       toast.error('Erreur lors de l\'ajout');
@@ -93,7 +96,7 @@ export default function HolidaysPage({ holidays, onUpdate }) {
     
     try {
       await deleteHoliday(holiday.id);
-      toast.success('Jour férié supprimé');
+      toast.success('Supprimé avec succès');
       onUpdate();
     } catch (error) {
       toast.error('Erreur lors de la suppression');
@@ -116,7 +119,7 @@ export default function HolidaysPage({ holidays, onUpdate }) {
         <CardHeader className="flex flex-row items-center justify-between pb-4">
           <CardTitle className="flex items-center gap-2">
             <CalendarOff className="h-5 w-5" />
-            Jours fériés et exceptions
+            Jours fériés et congés
             <Badge variant="secondary">{holidays.length}</Badge>
           </CardTitle>
           <Button onClick={() => setShowModal(true)} className="bg-[#4CAF50] hover:bg-[#43A047]" data-testid="add-holiday-btn">
@@ -129,6 +132,7 @@ export default function HolidaysPage({ holidays, onUpdate }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-20">Type</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Nom</TableHead>
                   <TableHead className="w-20">Actions</TableHead>
@@ -137,6 +141,11 @@ export default function HolidaysPage({ holidays, onUpdate }) {
               <TableBody>
                 {sortedHolidays.map((holiday) => (
                   <TableRow key={holiday.id} data-testid={`holiday-row-${holiday.id}`}>
+                    <TableCell>
+                      <Badge variant={holiday.type === 'conge' ? 'secondary' : 'default'} className={holiday.type === 'conge' ? 'bg-purple-500 text-white' : 'bg-red-500'}>
+                        {holiday.type === 'conge' ? 'Congé' : 'Férié'}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="font-medium">
                       {formatDateDisplay(holiday.date)}
                     </TableCell>
@@ -156,8 +165,8 @@ export default function HolidaysPage({ holidays, onUpdate }) {
                 ))}
                 {sortedHolidays.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                      Aucun jour férié configuré
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      Aucun jour férié ou congé configuré
                     </TableCell>
                   </TableRow>
                 )}
@@ -171,22 +180,46 @@ export default function HolidaysPage({ holidays, onUpdate }) {
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter un jour férié</DialogTitle>
+            <DialogTitle>Ajouter un jour férié ou congé</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Type selection */}
+            <div className="space-y-3">
+              <Label>Type</Label>
+              <RadioGroup value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })} className="flex gap-4">
+                <div className={`flex items-center space-x-2 p-3 rounded-lg border-2 cursor-pointer transition-colors flex-1 ${formData.type === 'ferie' ? 'border-red-500 bg-red-50 dark:bg-red-950/30' : 'border-input'}`}>
+                  <RadioGroupItem value="ferie" id="type-ferie" />
+                  <Label htmlFor="type-ferie" className="cursor-pointer font-normal flex-1">
+                    <div className="font-medium text-red-600">Jour férié</div>
+                    <div className="text-xs text-muted-foreground">Ex: Noël, 1er juillet</div>
+                  </Label>
+                </div>
+                <div className={`flex items-center space-x-2 p-3 rounded-lg border-2 cursor-pointer transition-colors flex-1 ${formData.type === 'conge' ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30' : 'border-input'}`}>
+                  <RadioGroupItem value="conge" id="type-conge" />
+                  <Label htmlFor="type-conge" className="cursor-pointer font-normal flex-1">
+                    <div className="font-medium text-purple-600">Congé</div>
+                    <div className="text-xs text-muted-foreground">Ex: Semaine de relâche</div>
+                  </Label>
+                </div>
+              </RadioGroup>
+              <p className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                <strong>Note:</strong> Les fériés et congés n'ont pas d'impact sur les assignations ADMIN et MÉCANO.
+              </p>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="name">Nom *</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ex: Fête du travail"
+                placeholder="Ex: Fête du travail, Semaine de relâche"
                 data-testid="holiday-name-input"
               />
             </div>
             
             <div className="space-y-3">
-              <Label>Type de sélection</Label>
+              <Label>Sélection de date</Label>
               <RadioGroup value={dateMode} onValueChange={setDateMode} className="flex gap-4">
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="single" id="single" />
