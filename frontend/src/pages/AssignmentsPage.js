@@ -421,27 +421,26 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Case Adapté en haut */}
-            <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
-              <Checkbox
-                id="is_adapted"
-                checked={formData.is_adapted}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_adapted: checked })}
-              />
-              <Label htmlFor="is_adapted" className="cursor-pointer flex items-center gap-2">
-                <Accessibility className="h-5 w-5 text-blue-600" />
-                <span className="font-medium">Circuit adapté (transport pour personnes handicapées)</span>
-              </Label>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Numéro de circuit *</Label>
-                <Input
-                  value={formData.circuit_number}
-                  onChange={(e) => setFormData({ ...formData, circuit_number: e.target.value })}
-                  placeholder="Ex: 204"
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={formData.circuit_number}
+                    onChange={(e) => setFormData({ ...formData, circuit_number: e.target.value })}
+                    placeholder="Entrer le numéro"
+                    className="flex-1"
+                  />
+                  <Checkbox
+                    id="is_adapted"
+                    checked={formData.is_adapted}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_adapted: checked })}
+                  />
+                  <Label htmlFor="is_adapted" className="cursor-pointer flex items-center gap-1 text-sm whitespace-nowrap">
+                    <Accessibility className="h-4 w-4 text-blue-600" />
+                    Adapté
+                  </Label>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Conducteur</Label>
