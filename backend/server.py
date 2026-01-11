@@ -692,8 +692,15 @@ async def get_schedule(date: str = None, week_start: str = None):
     temp_tasks = await db.temporary_tasks.find({}, {"_id": 0}).to_list(500)
     absences = await db.absences.find({}, {"_id": 0}).to_list(500)
     holidays = await db.holidays.find({}, {"_id": 0}).to_list(100)
+    temp_reassignments = await db.temporary_reassignments.find({}, {"_id": 0}).to_list(1000)
     
     holiday_dates = {h['date'] for h in holidays}
+    
+    # Index des réassignations temporaires par clé (date-assignment_id-shift_id-block_id)
+    reassignment_index = {}
+    for r in temp_reassignments:
+        key = f"{r['date']}-{r['assignment_id']}-{r['shift_id']}-{r.get('block_id', '')}"
+        reassignment_index[key] = r
     
     if week_start:
         week_start_date = datetime.strptime(week_start, '%Y-%m-%d')
