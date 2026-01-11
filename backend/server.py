@@ -380,7 +380,8 @@ async def create_assignment(data: AssignmentCreate):
         employee_id=data.employee_id,
         employee_name=employee_name,
         start_date=data.start_date,
-        end_date=data.end_date
+        end_date=data.end_date,
+        is_adapted=data.is_adapted
     )
     doc = assignment.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
