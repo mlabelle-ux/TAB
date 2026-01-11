@@ -16,15 +16,15 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [x] Colonnes "Jour" et "Semaine" à droite pour les totaux
 - [x] Plage horaire 5h00 à 18h59
 - [x] Bouton "Aujourd'hui" pour revenir à la date actuelle
-- [x] Icône calendrier pour sélection de date (corrigé UTC-5 - 11 janv. 2026)
+- [x] Icône calendrier pour sélection de date (corrigé UTC-5)
 - [x] Tri par Circuit (numérique) ou par Nom (alphabétique)
 - [x] Icône handicapé ♿ à côté du circuit si "Adapté"
 - [x] Info-bulle (tooltip) au survol des blocs
 
-### Modes de vue ✅ (Corrigé 11 janv. 2026)
+### Modes de vue ✅
 - [x] **Mode Détaillé:** Affiche les blocs d'école + blocs HLP jaunes séparés avant/après
 - [x] **Mode Complet:** Affiche les blocs avec HLP inclus dans leur durée
-- [x] **Mode Abrégé:** Affiche les quarts de travail (AM bleu, PM orange, MIDI vert) au lieu des blocs individuels
+- [x] **Mode Abrégé:** Affiche les quarts de travail (AM bleu, PM orange, MIDI vert)
 
 ### Section Remplacements ✅
 - [x] Section fixe en haut du tableau
@@ -33,7 +33,7 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [x] Affichage des blocs des conducteurs absents (rouge)
 - [x] Affichage des blocs non assignés (orange)
 - [x] Zone droppable pour désassigner temporairement
-- [x] **Blocs restent visibles** après drag vers Remplacements (corrigé 11 janv. 2026)
+- [x] Blocs restent visibles après drag vers Remplacements
 
 ### Drag and Drop Temporaire ✅
 - [x] Réassignation temporaire pour la journée seulement
@@ -42,6 +42,15 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [x] Glisser vers Remplacements = désassigner pour la journée
 - [x] Indicateur visuel (bordure orange) pour les blocs réassignés
 - [x] Toast de confirmation pour chaque action
+
+### Heures de travail dynamiques ✅ (11 janv. 2026)
+- [x] **Heures du conducteur original réduites** quand un bloc est réassigné
+- [x] **Heures du conducteur cible augmentées** quand un bloc lui est assigné
+- [x] **Heures nulles pour Remplacements** : le conducteur perd les heures
+- [x] **HLP inclus** dans le calcul des heures
+- [x] **Fusion intelligente des chevauchements** : pas de double comptage
+- [x] **Mise à jour des colonnes Jour et Semaine** immédiatement après drag & drop
+- [x] **Fonction backend `calculate_daily_hours_with_reassignments`** pour le calcul
 
 ### Circuit visible quand absent ✅
 - [x] Numéro de circuit reste visible en rouge quand conducteur absent
@@ -53,11 +62,11 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [x] Champs: Nom, Date d'embauche, Téléphone, Courriel, Berline, Matricule
 - [x] En-têtes de colonnes figés (sticky header)
 - [x] Tri par colonne
-- [x] **Case "Inactif"** avec icône UserX (ajouté 11 janv. 2026)
-- [x] **Compteur "X actifs"** dans l'en-tête
-- [x] **Case "Afficher inactifs"** pour filtrer
-- [x] **Employés inactifs cachés** des listes déroulantes et vue horaire
-- [x] **Doublons de berline permis** si l'un des employés est inactif
+- [x] Case "Inactif" avec icône UserX
+- [x] Compteur "X actifs" dans l'en-tête
+- [x] Case "Afficher inactifs" pour filtrer
+- [x] Employés inactifs cachés des listes déroulantes et vue horaire
+- [x] Doublons de berline permis si l'un des employés est inactif
 
 ### Gestion des Écoles ✅
 - [x] CRUD complet avec couleur unique
@@ -67,7 +76,7 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 ### Gestion des Assignations ✅
 - [x] Création de circuits avec quarts (AM/MIDI/PM)
 - [x] Quarts spéciaux Admin et Mécano avec heures fixes modifiables
-- [x] **Case "Adapté?"** avec seulement l'icône ♿ (mot retiré 11 janv. 2026)
+- [x] Case "Adapté?" avec seulement l'icône ♿
 - [x] Périodes d'assignation prédéfinies
 - [x] Assignations triées par circuit
 - [x] Conducteurs triés alphabétiquement (actifs seulement)
@@ -79,7 +88,7 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [x] Conducteurs triés alphabétiquement (actifs seulement)
 
 ### Jours Fériés et Congés ✅
-- [x] Option **Férié** ou **Congé**
+- [x] Option Férié ou Congé
 - [x] Sélection journée unique ou période
 - [x] Fériés/Congés n'impactent pas Admin et Mécano
 
@@ -99,6 +108,7 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [x] Fusion des intervalles pour éviter les doubles comptages
 - [x] Quarts Admin/Mécano: heures fixes modifiables
 - [x] Admin/Mécano non impactés par jours fériés/congés
+- [x] Calcul dynamique avec réassignations temporaires
 
 ### Navigation ✅
 - [x] Tous les onglets ont des icônes
@@ -107,7 +117,6 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - [ ] Historique des réassignations (journal d'audit)
 - [ ] Pop-up de gestion de conflits lors de chevauchements > 5 min
 - [ ] Exportation des données en format Excel/CSV
-- [ ] Les heures de travail suivent le déplacement des quarts/blocs (calcul dynamique)
 
 ## Collections MongoDB
 - `admins` - Administrateurs
@@ -120,4 +129,4 @@ Application web pour la gestion des horaires des conducteurs d'autobus scolaire 
 - `temporary_reassignments` - Réassignations temporaires (drag & drop)
 
 ## Dernière mise à jour
-11 janvier 2026 - Corrections modes de vue (HLP, quarts), calendrier UTC-5, employés inactifs, case Adapté
+11 janvier 2026 - Heures de travail dynamiques lors du drag & drop
