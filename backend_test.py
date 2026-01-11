@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
 class BusScheduleAPITester:
-    def __init__(self, base_url: str = "https://route-manager-27.preview.emergentagent.com"):
+    def __init__(self, base_url: str = "https://school-bus-schedule.preview.emergentagent.com"):
         self.base_url = base_url
         self.admin_data = None
         self.tests_run = 0
