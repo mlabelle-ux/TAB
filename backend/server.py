@@ -47,6 +47,7 @@ class Employee(BaseModel):
     phone: str = ""
     email: str = ""
     berline: str = ""
+    is_inactive: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class EmployeeCreate(BaseModel):
@@ -56,6 +57,7 @@ class EmployeeCreate(BaseModel):
     phone: str = ""
     email: str = ""
     berline: str = ""
+    is_inactive: bool = False
 
 class School(BaseModel):
     model_config = ConfigDict(extra="ignore")
