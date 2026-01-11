@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
@@ -36,33 +36,49 @@ import TemporaryTaskModal from '../components/TemporaryTaskModal';
 
 const LOGO_URL = 'https://customer-assets.emergentagent.com/job_route-manager-27/artifacts/sd598o43_LogoBerlinesTAB.png';
 
-// View hours range
-const VIEW_START_HOUR = 6.5; // 6:30
-const VIEW_END_HOUR = 16.5; // 16:30
+// Time configuration
+const SCHEDULE_START_HOUR = 5; // 5:00
+const SCHEDULE_END_HOUR = 20; // 20:00
+const DEFAULT_VIEW_START = 6.5; // 6:30
+const DEFAULT_VIEW_END = 16.5; // 16:30
 const PIXELS_PER_HOUR = 80;
-const TOTAL_WIDTH = (VIEW_END_HOUR - VIEW_START_HOUR) * PIXELS_PER_HOUR;
+const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR;
+const TOTAL_SCHEDULE_WIDTH = TOTAL_HOURS * PIXELS_PER_HOUR;
 
-// Generate time markers
+// Column widths
+const DRIVER_COL_WIDTH = 160;
+const CIRCUIT_COL_WIDTH = 70;
+const DAY_HOURS_COL_WIDTH = 70;
+const WEEK_HOURS_COL_WIDTH = 90;
+const FIXED_LEFT_WIDTH = DRIVER_COL_WIDTH + CIRCUIT_COL_WIDTH;
+const FIXED_RIGHT_WIDTH = DAY_HOURS_COL_WIDTH + WEEK_HOURS_COL_WIDTH;
+
+// Generate time markers (every hour from 5h to 20h)
 const generateTimeMarkers = () => {
   const markers = [];
-  for (let h = 6; h <= 17; h++) {
-    markers.push({ hour: h, label: `${h}h00` });
+  for (let h = SCHEDULE_START_HOUR; h <= SCHEDULE_END_HOUR; h++) {
+    markers.push({ hour: h, label: `${h}h00`, position: (h - SCHEDULE_START_HOUR) * PIXELS_PER_HOUR });
   }
   return markers;
 };
 
-const TimeHeader = () => {
-  const markers = generateTimeMarkers();
-  
+const TIME_MARKERS = generateTimeMarkers();
+
+const TimeHeader = ({ scrollLeft }) => {
   return (
-    <div className="flex h-10 border-b border-border bg-muted/50" style={{ width: TOTAL_WIDTH }}>
-      {markers.map((marker) => (
+    <div 
+      className="relative h-10 border-b border-border bg-muted/50"
+      style={{ width: TOTAL_SCHEDULE_WIDTH }}
+    >
+      {TIME_MARKERS.map((marker) => (
         <div 
           key={marker.hour}
-          className="flex-shrink-0 border-l border-border px-1 text-xs text-muted-foreground"
-          style={{ width: PIXELS_PER_HOUR, marginLeft: marker.hour === 6 ? -20 : 0 }}
+          className="absolute top-0 h-full flex items-center border-l border-border"
+          style={{ left: marker.position }}
         >
-          {marker.label}
+          <span className="px-2 text-xs font-medium text-muted-foreground whitespace-nowrap">
+            {marker.label}
+          </span>
         </div>
       ))}
     </div>
@@ -72,12 +88,13 @@ const TimeHeader = () => {
 const ScheduleBlock = ({ block, shift, assignment, viewMode, onClick }) => {
   const startMinutes = timeToMinutes(block.start_time);
   const endMinutes = timeToMinutes(block.end_time);
-  const viewStartMinutes = VIEW_START_HOUR * 60;
+  const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
   
-  const left = ((startMinutes - viewStartMinutes) / 60) * PIXELS_PER_HOUR;
+  // Calculate position based on schedule start
+  const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
   const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
   
-  if (left + width < 0 || left > TOTAL_WIDTH) return null;
+  if (left + width < 0 || left > TOTAL_SCHEDULE_WIDTH) return null;
   
   const bgColor = block.school_color || '#9E9E9E';
   const textColor = getContrastColor(bgColor);
@@ -90,7 +107,7 @@ const ScheduleBlock = ({ block, shift, assignment, viewMode, onClick }) => {
     <>
       {viewMode === 'detailed' && block.hlp_before > 0 && (
         <div
-          className="schedule-block hlp-block"
+          className="absolute rounded text-xs flex items-center justify-center bg-gray-500 text-white"
           style={{
             left: Math.max(0, left - hlpBeforeWidth),
             width: hlpBeforeWidth,
@@ -102,7 +119,7 @@ const ScheduleBlock = ({ block, shift, assignment, viewMode, onClick }) => {
         </div>
       )}
       <div
-        className="schedule-block cursor-pointer"
+        className="absolute rounded cursor-pointer text-xs flex items-center px-1 overflow-hidden border border-black/10 hover:shadow-lg hover:z-10 transition-shadow"
         style={{
           left: Math.max(0, left),
           width: Math.max(30, width),
@@ -115,15 +132,15 @@ const ScheduleBlock = ({ block, shift, assignment, viewMode, onClick }) => {
         data-testid={`block-${block.id}`}
       >
         {viewMode === 'detailed' && (
-          <span className="truncate">{block.school_name || 'École'}</span>
+          <span className="truncate font-medium">{block.school_name || 'École'}</span>
         )}
         {viewMode === 'complete' && (
-          <span className="truncate">{block.school_name || 'École'}</span>
+          <span className="truncate font-medium">{block.school_name || 'École'}</span>
         )}
       </div>
       {viewMode === 'detailed' && block.hlp_after > 0 && (
         <div
-          className="schedule-block hlp-block"
+          className="absolute rounded text-xs flex items-center justify-center bg-gray-500 text-white"
           style={{
             left: Math.max(0, left + width),
             width: hlpAfterWidth,
@@ -141,6 +158,8 @@ const ScheduleBlock = ({ block, shift, assignment, viewMode, onClick }) => {
 const ShiftBlock = ({ shift, assignment, viewMode, onClick }) => {
   if (!shift.blocks || shift.blocks.length === 0) return null;
   
+  const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
+  
   // Get start and end time from blocks
   const allTimes = shift.blocks.flatMap(b => [
     timeToMinutes(b.start_time) - (b.hlp_before || 0),
@@ -148,17 +167,16 @@ const ShiftBlock = ({ shift, assignment, viewMode, onClick }) => {
   ]);
   const startMinutes = Math.min(...allTimes);
   const endMinutes = Math.max(...allTimes);
-  const viewStartMinutes = VIEW_START_HOUR * 60;
   
-  const left = ((startMinutes - viewStartMinutes) / 60) * PIXELS_PER_HOUR;
+  const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
   const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
   
-  if (left + width < 0 || left > TOTAL_WIDTH) return null;
+  if (left + width < 0 || left > TOTAL_SCHEDULE_WIDTH) return null;
   
   if (viewMode === 'abbreviated') {
     return (
       <div
-        className="schedule-block cursor-pointer bg-gray-500 text-white"
+        className="absolute rounded cursor-pointer bg-gray-600 text-white text-xs flex items-center justify-center px-2 font-medium hover:shadow-lg transition-shadow"
         style={{
           left: Math.max(0, left),
           width: Math.max(60, width),
@@ -188,19 +206,19 @@ const ShiftBlock = ({ shift, assignment, viewMode, onClick }) => {
 const TemporaryTaskBlock = ({ task, onClick }) => {
   const startMinutes = timeToMinutes(task.start_time);
   const endMinutes = timeToMinutes(task.end_time);
-  const viewStartMinutes = VIEW_START_HOUR * 60;
+  const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
   
-  const left = ((startMinutes - viewStartMinutes) / 60) * PIXELS_PER_HOUR;
+  const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
   const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
   
-  if (left + width < 0 || left > TOTAL_WIDTH) return null;
+  if (left + width < 0 || left > TOTAL_SCHEDULE_WIDTH) return null;
   
   const bgColor = task.school_color || '#9E9E9E';
   const textColor = getContrastColor(bgColor);
   
   return (
     <div
-      className="schedule-block cursor-pointer border-2 border-dashed"
+      className="absolute rounded cursor-pointer text-xs flex items-center px-1 overflow-hidden border-2 border-dashed hover:shadow-lg transition-shadow"
       style={{
         left: Math.max(0, left),
         width: Math.max(30, width),
@@ -213,100 +231,216 @@ const TemporaryTaskBlock = ({ task, onClick }) => {
       onClick={onClick}
       data-testid={`temp-task-${task.id}`}
     >
-      {task.name}
+      <span className="truncate font-medium">{task.name}</span>
     </div>
   );
 };
 
-const DriverRow = ({ 
-  employee, schedule, assignments, tempTasks, viewMode, 
-  selectedDate, weekDates, onAssignmentClick, onTaskClick
+const ScheduleGrid = ({ 
+  employees, scheduleData, assignments, tempTasks, 
+  viewMode, selectedDate, weekDates,
+  onAssignmentClick, onTaskClick 
 }) => {
-  const dailyMinutes = schedule?.daily_hours?.[selectedDate] || 0;
-  const weeklyMinutes = schedule?.weekly_total || 0;
+  const scheduleScrollRef = useRef(null);
+  const headerScrollRef = useRef(null);
   
-  // Filter assignments for selected date
-  const dayAssignments = assignments.filter(a => 
-    a.employee_id === employee.id &&
-    a.start_date <= selectedDate &&
-    a.end_date >= selectedDate
-  );
+  // Scroll to default view on mount
+  useEffect(() => {
+    if (scheduleScrollRef.current) {
+      const defaultScrollLeft = (DEFAULT_VIEW_START - SCHEDULE_START_HOUR) * PIXELS_PER_HOUR;
+      scheduleScrollRef.current.scrollLeft = defaultScrollLeft;
+    }
+  }, []);
   
-  const dayTasks = tempTasks.filter(t => 
-    t.employee_id === employee.id &&
-    t.date === selectedDate
-  );
-  
-  // Alerts
-  const isOvertime = weeklyMinutes > 39 * 60;
-  const isUndertime = weeklyMinutes < 15 * 60 && weeklyMinutes > 0;
+  // Sync header scroll with schedule scroll
+  const handleScheduleScroll = (e) => {
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = e.target.scrollLeft;
+    }
+  };
   
   return (
-    <div className="flex border-b border-border hover:bg-muted/30" data-testid={`driver-row-${employee.id}`}>
-      {/* Fixed columns */}
-      <div className="driver-column flex-shrink-0 w-44 px-3 py-2 border-r border-border bg-background">
-        <div className="font-medium text-sm truncate">{employee.name}</div>
-      </div>
-      <div className="circuit-column flex-shrink-0 w-20 px-2 py-2 border-r border-border bg-background">
-        <div className="text-xs text-muted-foreground">
-          {dayAssignments.map(a => a.circuit_number).join(', ') || '-'}
+    <div className="border border-border rounded-lg overflow-hidden bg-card">
+      {/* Header Row */}
+      <div className="flex border-b-2 border-border bg-muted/70">
+        {/* Fixed Left Header */}
+        <div className="flex-shrink-0 flex" style={{ width: FIXED_LEFT_WIDTH }}>
+          <div 
+            className="font-semibold text-sm px-3 py-2 border-r border-border flex items-center"
+            style={{ width: DRIVER_COL_WIDTH }}
+          >
+            Conducteur
+          </div>
+          <div 
+            className="font-semibold text-sm px-2 py-2 border-r border-border flex items-center justify-center"
+            style={{ width: CIRCUIT_COL_WIDTH }}
+          >
+            Circuit
+          </div>
+        </div>
+        
+        {/* Scrollable Time Header */}
+        <div 
+          ref={headerScrollRef}
+          className="flex-1 overflow-hidden"
+          style={{ minWidth: 0 }}
+        >
+          <TimeHeader />
+        </div>
+        
+        {/* Fixed Right Header */}
+        <div className="flex-shrink-0 flex" style={{ width: FIXED_RIGHT_WIDTH }}>
+          <div 
+            className="font-semibold text-sm px-2 py-2 border-l border-border flex items-center justify-center"
+            style={{ width: DAY_HOURS_COL_WIDTH }}
+          >
+            Jour
+          </div>
+          <div 
+            className="font-semibold text-sm px-2 py-2 border-l border-border flex items-center justify-center"
+            style={{ width: WEEK_HOURS_COL_WIDTH }}
+          >
+            Semaine
+          </div>
         </div>
       </div>
       
-      {/* Schedule area */}
-      <div className="relative flex-1 min-h-[48px]" style={{ width: TOTAL_WIDTH }}>
-        {/* Time grid lines */}
-        {generateTimeMarkers().map((marker) => (
-          <div
-            key={marker.hour}
-            className="time-marker time-marker-hour"
-            style={{ left: ((marker.hour - VIEW_START_HOUR) * PIXELS_PER_HOUR) }}
-          />
-        ))}
+      {/* Data Rows */}
+      <div className="max-h-[calc(100vh-340px)] overflow-y-auto">
+        {employees.map(emp => {
+          const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
+          const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
+          const weeklyMinutes = empSchedule?.weekly_total || 0;
+          
+          // Filter assignments for selected date
+          const dayAssignments = assignments.filter(a => 
+            a.employee_id === emp.id &&
+            a.start_date <= selectedDate &&
+            a.end_date >= selectedDate
+          );
+          
+          const dayTasks = tempTasks.filter(t => 
+            t.employee_id === emp.id &&
+            t.date === selectedDate
+          );
+          
+          // Alerts
+          const isOvertime = weeklyMinutes > 39 * 60;
+          const isUndertime = weeklyMinutes < 15 * 60 && weeklyMinutes > 0;
+          
+          return (
+            <div 
+              key={emp.id} 
+              className="flex border-b border-border hover:bg-muted/30 transition-colors"
+              data-testid={`driver-row-${emp.id}`}
+            >
+              {/* Fixed Left Columns */}
+              <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
+                <div 
+                  className="px-3 py-2 border-r border-border flex items-center"
+                  style={{ width: DRIVER_COL_WIDTH }}
+                >
+                  <span className="font-medium text-sm truncate">{emp.name}</span>
+                </div>
+                <div 
+                  className="px-2 py-2 border-r border-border flex items-center justify-center"
+                  style={{ width: CIRCUIT_COL_WIDTH }}
+                >
+                  <span className="text-xs text-muted-foreground">
+                    {dayAssignments.map(a => a.circuit_number).join(', ') || '-'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Scrollable Schedule Area */}
+              <div 
+                ref={emp === employees[0] ? scheduleScrollRef : null}
+                className="flex-1 overflow-x-auto overflow-y-hidden"
+                style={{ minWidth: 0 }}
+                onScroll={emp === employees[0] ? handleScheduleScroll : undefined}
+              >
+                <div 
+                  className="relative min-h-[48px]"
+                  style={{ width: TOTAL_SCHEDULE_WIDTH }}
+                >
+                  {/* Time grid lines */}
+                  {TIME_MARKERS.map((marker) => (
+                    <div
+                      key={marker.hour}
+                      className="absolute top-0 bottom-0 border-l border-border/50"
+                      style={{ left: marker.position }}
+                    />
+                  ))}
+                  
+                  {/* Half-hour markers */}
+                  {TIME_MARKERS.slice(0, -1).map((marker) => (
+                    <div
+                      key={`half-${marker.hour}`}
+                      className="absolute top-0 bottom-0 border-l border-dashed border-border/30"
+                      style={{ left: marker.position + PIXELS_PER_HOUR / 2 }}
+                    />
+                  ))}
+                  
+                  {/* Assignments */}
+                  {dayAssignments.map(assignment => 
+                    assignment.shifts?.map(shift => (
+                      <ShiftBlock
+                        key={`${assignment.id}-${shift.id}`}
+                        shift={shift}
+                        assignment={assignment}
+                        viewMode={viewMode}
+                        onClick={() => onAssignmentClick(assignment)}
+                      />
+                    ))
+                  )}
+                  
+                  {/* Temporary tasks */}
+                  {dayTasks.map(task => (
+                    <TemporaryTaskBlock
+                      key={task.id}
+                      task={task}
+                      onClick={() => onTaskClick(task)}
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              {/* Fixed Right Columns */}
+              <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_RIGHT_WIDTH }}>
+                <div 
+                  className="px-2 py-2 border-l border-border flex items-center justify-center tabular-nums text-sm"
+                  style={{ width: DAY_HOURS_COL_WIDTH }}
+                >
+                  {formatHoursMinutes(dailyMinutes)}
+                </div>
+                <div 
+                  className="px-2 py-2 border-l border-border flex items-center justify-center gap-1"
+                  style={{ width: WEEK_HOURS_COL_WIDTH }}
+                >
+                  <span className="tabular-nums text-sm font-medium">
+                    {formatHoursMinutes(weeklyMinutes)}
+                  </span>
+                  {isOvertime && (
+                    <span className="text-red-500" title="Plus de 39h/semaine">
+                      <AlertTriangle className="h-4 w-4" />
+                    </span>
+                  )}
+                  {isUndertime && (
+                    <span className="text-amber-500" title="Moins de 15h/semaine">
+                      <AlertTriangle className="h-4 w-4" />
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
         
-        {/* Assignments */}
-        {dayAssignments.map(assignment => 
-          assignment.shifts?.map(shift => (
-            <ShiftBlock
-              key={`${assignment.id}-${shift.id}`}
-              shift={shift}
-              assignment={assignment}
-              viewMode={viewMode}
-              onClick={() => onAssignmentClick(assignment)}
-            />
-          ))
+        {employees.length === 0 && (
+          <div className="p-8 text-center text-muted-foreground">
+            Aucun employé. Ajoutez des employés dans l'onglet "Employés".
+          </div>
         )}
-        
-        {/* Temporary tasks */}
-        {dayTasks.map(task => (
-          <TemporaryTaskBlock
-            key={task.id}
-            task={task}
-            onClick={() => onTaskClick(task)}
-          />
-        ))}
-      </div>
-      
-      {/* Hours columns */}
-      <div className="flex-shrink-0 w-16 px-2 py-2 border-l border-border text-center tabular-nums text-sm">
-        {formatHoursMinutes(dailyMinutes)}
-      </div>
-      <div className="flex-shrink-0 w-20 px-2 py-2 border-l border-border text-center">
-        <div className="flex items-center justify-center gap-1">
-          <span className="tabular-nums text-sm font-medium">
-            {formatHoursMinutes(weeklyMinutes)}
-          </span>
-          {isOvertime && (
-            <span className="text-red-500" title="Plus de 39h/semaine">
-              <AlertTriangle className="h-4 w-4" />
-            </span>
-          )}
-          {isUndertime && (
-            <span className="text-amber-500" title="Moins de 15h/semaine">
-              <AlertTriangle className="h-4 w-4" />
-            </span>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -322,11 +456,11 @@ const ReplacementsSection = ({ replacements, onAssign }) => {
   if (!hasReplacements) return null;
   
   return (
-    <div className="replacements-section px-4 py-3 mb-2">
-      <div className="flex items-center gap-2 mb-2">
-        <AlertTriangle className="h-4 w-4 text-amber-500" />
-        <h3 className="font-semibold text-sm">Remplacements requis</h3>
-        <Badge variant="secondary" className="ml-2">
+    <div className="mb-4 p-4 rounded-lg border-2 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-5 w-5 text-amber-600" />
+        <h3 className="font-semibold text-amber-800 dark:text-amber-200">Remplacements requis</h3>
+        <Badge variant="secondary" className="bg-amber-200 text-amber-800">
           {unassigned_assignments.length + unassigned_tasks.length + absent_items.length}
         </Badge>
       </div>
@@ -336,7 +470,7 @@ const ReplacementsSection = ({ replacements, onAssign }) => {
             <Badge 
               key={a.id} 
               variant="outline" 
-              className="cursor-pointer hover:bg-muted whitespace-nowrap"
+              className="cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800 whitespace-nowrap"
               onClick={() => onAssign(a, 'assignment')}
               data-testid={`replacement-${a.id}`}
             >
@@ -347,7 +481,7 @@ const ReplacementsSection = ({ replacements, onAssign }) => {
             <Badge 
               key={t.id} 
               variant="outline" 
-              className="cursor-pointer hover:bg-muted whitespace-nowrap border-dashed"
+              className="cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800 whitespace-nowrap border-dashed"
               onClick={() => onAssign(t, 'task')}
               data-testid={`replacement-task-${t.id}`}
             >
@@ -358,7 +492,7 @@ const ReplacementsSection = ({ replacements, onAssign }) => {
             <Badge 
               key={`absent-${idx}`} 
               variant="outline" 
-              className="cursor-pointer hover:bg-muted whitespace-nowrap bg-amber-50 dark:bg-amber-900/20"
+              className="cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800 whitespace-nowrap"
               onClick={() => onAssign(item.data, 'assignment')}
             >
               {item.data.circuit_number} ({item.original_employee})
@@ -455,7 +589,6 @@ export default function DashboardPage() {
   };
   
   const handleAssign = async (item, type) => {
-    // TODO: Open assignment dialog
     toast.info('Fonctionnalité d\'assignation à venir');
   };
   
@@ -579,21 +712,21 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <div className="flex rounded-md border border-input overflow-hidden">
                   <button
-                    className={`view-mode-btn ${viewMode === 'detailed' ? 'active' : ''}`}
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'detailed' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
                     onClick={() => setViewMode('detailed')}
                     data-testid="view-detailed"
                   >
                     Détaillé
                   </button>
                   <button
-                    className={`view-mode-btn ${viewMode === 'complete' ? 'active' : ''}`}
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-input ${viewMode === 'complete' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
                     onClick={() => setViewMode('complete')}
                     data-testid="view-complete"
                   >
                     Complet
                   </button>
                   <button
-                    className={`view-mode-btn ${viewMode === 'abbreviated' ? 'active' : ''}`}
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-input ${viewMode === 'abbreviated' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
                     onClick={() => setViewMode('abbreviated')}
                     data-testid="view-abbreviated"
                   >
@@ -616,56 +749,17 @@ export default function DashboardPage() {
             <ReplacementsSection replacements={replacements} onAssign={handleAssign} />
             
             {/* Schedule Grid */}
-            <Card className="overflow-hidden">
-              <ScrollArea className="w-full" style={{ maxHeight: 'calc(100vh - 300px)' }}>
-                <div className="min-w-max">
-                  {/* Header */}
-                  <div className="flex border-b border-border bg-muted/50 sticky top-0 z-20">
-                    <div className="flex-shrink-0 w-44 px-3 py-2 font-semibold text-sm border-r border-border">
-                      Conducteur
-                    </div>
-                    <div className="flex-shrink-0 w-20 px-2 py-2 font-semibold text-sm text-center border-r border-border">
-                      Circuit
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <TimeHeader />
-                    </div>
-                    <div className="flex-shrink-0 w-16 px-2 py-2 font-semibold text-sm text-center border-l border-border">
-                      Jour
-                    </div>
-                    <div className="flex-shrink-0 w-20 px-2 py-2 font-semibold text-sm text-center border-l border-border">
-                      Semaine
-                    </div>
-                  </div>
-                  
-                  {/* Rows */}
-                  {employees.map(emp => {
-                    const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
-                    return (
-                      <DriverRow
-                        key={emp.id}
-                        employee={emp}
-                        schedule={empSchedule}
-                        assignments={assignments}
-                        tempTasks={tempTasks}
-                        viewMode={viewMode}
-                        selectedDate={selectedDate}
-                        weekDates={weekDates}
-                        onAssignmentClick={handleAssignmentClick}
-                        onTaskClick={handleTaskClick}
-                      />
-                    );
-                  })}
-                  
-                  {employees.length === 0 && (
-                    <div className="p-8 text-center text-muted-foreground">
-                      Aucun employé. Ajoutez des employés dans l'onglet "Employés".
-                    </div>
-                  )}
-                </div>
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
-            </Card>
+            <ScheduleGrid
+              employees={employees}
+              scheduleData={scheduleData}
+              assignments={assignments}
+              tempTasks={tempTasks}
+              viewMode={viewMode}
+              selectedDate={selectedDate}
+              weekDates={weekDates}
+              onAssignmentClick={handleAssignmentClick}
+              onTaskClick={handleTaskClick}
+            />
           </>
         )}
         
@@ -735,7 +829,6 @@ export default function DashboardPage() {
             <Button 
               className="bg-amber-500 hover:bg-amber-600"
               onClick={() => {
-                // Accept conflict
                 setConflictDialog({ open: false, conflicts: [], pending: null });
                 toast.info('Conflit accepté');
               }}
