@@ -201,7 +201,7 @@ export default function TemporaryTaskModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Conducteur (trié alphabétiquement)</Label>
+            <Label>Conducteur</Label>
             <Select
               value={formData.employee_id || "none"}
               onValueChange={handleEmployeeChange}
