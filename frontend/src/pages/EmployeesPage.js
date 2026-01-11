@@ -379,6 +379,18 @@ export default function EmployeesPage({ employees, onUpdate }) {
                 data-testid="employee-phone-input"
               />
             </div>
+            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+              <Checkbox
+                id="is_inactive"
+                checked={formData.is_inactive}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_inactive: checked })}
+                data-testid="employee-inactive-checkbox"
+              />
+              <Label htmlFor="is_inactive" className="cursor-pointer flex items-center gap-2">
+                <UserX className="h-4 w-4 text-muted-foreground" />
+                <span>Employé inactif</span>
+              </Label>
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
                 Annuler
