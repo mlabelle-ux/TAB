@@ -162,9 +162,9 @@ export default function EmployeesPage({ employees, onUpdate }) {
           </div>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[calc(100vh-280px)]">
+          <div className="overflow-auto max-h-[calc(100vh-280px)]">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
                   <TableHead 
                     className="cursor-pointer hover:bg-muted/50 select-none"
