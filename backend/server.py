@@ -742,6 +742,8 @@ async def generate_hours_report(
     employee_ids: str = "",
     sort_by: str = "name"  # name, matricule, hire_date
 ):
+    from reportlab.lib.pagesizes import letter, landscape
+    
     employees = await db.employees.find({}, {"_id": 0}).to_list(200)
     assignments = await db.assignments.find({}, {"_id": 0}).to_list(500)
     temp_tasks = await db.temporary_tasks.find({}, {"_id": 0}).to_list(500)
@@ -772,9 +774,15 @@ async def generate_hours_report(
             date_range.append(current.strftime('%Y-%m-%d'))
         current += timedelta(days=1)
     
-    # Create PDF in PORTRAIT mode
+    # Determine page orientation based on number of days
+    num_days = len(date_range)
+    if num_days > 7:
+        page_size = landscape(letter)
+    else:
+        page_size = letter
+    
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    doc = SimpleDocTemplate(buffer, pagesize=page_size, leftMargin=20, rightMargin=20, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
     
@@ -787,10 +795,16 @@ async def generate_hours_report(
         f"Période: {start_date} au {end_date}",
         styles['Normal']
     ))
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
     
-    # Build table - simplified for portrait
-    headers = ["Matricule", "Employé", "Total"]
+    # Format date headers (shorter format)
+    def format_date_header(d):
+        dt = datetime.strptime(d, '%Y-%m-%d')
+        days_fr = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+        return f"{days_fr[dt.weekday()]}\n{dt.day}/{dt.month}"
+    
+    # Build headers: Matricule, Nom, [dates...], Total
+    headers = ["Mat.", "Employé"] + [format_date_header(d) for d in date_range] + ["TOTAL"]
     table_data = [headers]
     
     for emp in employees:
@@ -799,10 +813,12 @@ async def generate_hours_report(
         emp_temp_tasks = [t for t in temp_tasks if t.get('employee_id') == emp_id]
         emp_absences = [a for a in absences if a.get('employee_id') == emp_id]
         
+        row = [emp.get('matricule', '-')[:6], emp['name'][:20]]
         total_minutes = 0
         
         for date_str in date_range:
             if date_str in holiday_dates:
+                row.append("F")
                 continue
             
             is_absent = any(
@@ -811,34 +827,55 @@ async def generate_hours_report(
             )
             
             if is_absent:
+                row.append("A")
                 continue
             
             day_minutes = calculate_daily_hours(emp_assignments, emp_temp_tasks, date_str, holiday_dates)
             total_minutes += day_minutes
+            
+            if day_minutes > 0:
+                row.append(format_hours_minutes(day_minutes))
+            else:
+                row.append("-")
         
-        row = [
-            emp.get('matricule', '-'),
-            emp['name'],
-            format_hours_minutes(total_minutes)
-        ]
+        row.append(format_hours_minutes(total_minutes))
         table_data.append(row)
     
-    table = Table(table_data, colWidths=[80, 250, 80])
+    # Calculate column widths
+    mat_width = 35
+    name_width = 90
+    day_width = 38
+    total_width = 45
+    col_widths = [mat_width, name_width] + [day_width] * len(date_range) + [total_width]
+    
+    table = Table(table_data, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4CAF50')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (1, 1), (1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
         ('BACKGROUND', (0, 1), (-1, -1), colors.white),
         ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        # Highlight total column
+        ('BACKGROUND', (-1, 0), (-1, 0), colors.HexColor('#388E3C')),
+        ('FONTNAME', (-1, 1), (-1, -1), 'Helvetica-Bold'),
     ]))
     elements.append(table)
+    
+    # Legend
+    elements.append(Spacer(1, 15))
+    elements.append(Paragraph(
+        "Légende: F = Jour férié | A = Absent | - = Aucune heure",
+        styles['Normal']
+    ))
     
     doc.build(elements)
     buffer.seek(0)
