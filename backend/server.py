@@ -596,7 +596,7 @@ async def get_holidays():
 
 @api_router.post("/holidays")
 async def create_holiday(data: HolidayCreate):
-    holiday = Holiday(**data.model_dump())
+    holiday = Holiday(name=data.name, date=data.date, type=data.type)
     doc = holiday.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     await db.holidays.insert_one(doc)
