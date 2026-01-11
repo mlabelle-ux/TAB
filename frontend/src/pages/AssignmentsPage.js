@@ -13,13 +13,12 @@ import {
 } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
 import { ScrollArea } from '../components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Plus, Edit, Trash2, Search, Bus, Clock, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Bus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 
-// Helper to generate time options in 5-minute increments
 const generateTimeOptions = () => {
   const options = [];
   for (let h = 5; h <= 20; h++) {
@@ -32,6 +31,13 @@ const generateTimeOptions = () => {
 };
 
 const TIME_OPTIONS = generateTimeOptions();
+const DAYS = [
+  { id: 'L', label: 'Lun' },
+  { id: 'M', label: 'Mar' },
+  { id: 'W', label: 'Mer' },
+  { id: 'J', label: 'Jeu' },
+  { id: 'V', label: 'Ven' },
+];
 
 export default function AssignmentsPage({ assignments, employees, schools, onUpdate }) {
   const [search, setSearch] = useState('');
@@ -75,11 +81,29 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
   };
 
   const addShift = (type) => {
+    const isAdmin = type === 'ADMIN';
     const newShift = {
       id: uuidv4(),
       name: type,
-      blocks: []
+      blocks: isAdmin ? [] : [],
+      is_admin: isAdmin
     };
+    
+    // Admin shift gets default 6h-18h block
+    if (isAdmin) {
+      newShift.blocks = [{
+        id: uuidv4(),
+        school_id: '',
+        school_name: 'Administration',
+        school_color: '#607D8B',
+        start_time: '06:00',
+        end_time: '18:00',
+        hlp_before: 0,
+        hlp_after: 0,
+        days: ['L', 'M', 'W', 'J', 'V']
+      }];
+    }
+    
     setFormData({ ...formData, shifts: [...formData.shifts, newShift] });
   };
 
@@ -99,7 +123,8 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
       start_time: '07:00',
       end_time: '08:00',
       hlp_before: 0,
-      hlp_after: 0
+      hlp_after: 0,
+      days: ['L', 'M', 'W', 'J', 'V']
     };
     setFormData({
       ...formData,
@@ -147,7 +172,22 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
     });
   };
 
+  const toggleBlockDay = (shiftId, blockId, dayId) => {
+    const shift = formData.shifts.find(s => s.id === shiftId);
+    const block = shift?.blocks.find(b => b.id === blockId);
+    if (!block) return;
+    
+    const currentDays = block.days || ['L', 'M', 'W', 'J', 'V'];
+    const newDays = currentDays.includes(dayId)
+      ? currentDays.filter(d => d !== dayId)
+      : [...currentDays, dayId];
+    
+    updateBlock(shiftId, blockId, { days: newDays });
+  };
+
   const calculateShiftDuration = (shift) => {
+    if (shift.is_admin) return 8 * 60; // 8h fixe pour admin
+    
     let total = 0;
     for (const block of shift.blocks || []) {
       const start = timeToMinutes(block.start_time);
@@ -208,10 +248,9 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 w-64"
-                data-testid="assignment-search"
               />
             </div>
-            <Button onClick={openAddModal} className="bg-[#4CAF50] hover:bg-[#43A047]" data-testid="add-assignment-btn">
+            <Button onClick={openAddModal} className="bg-[#4CAF50] hover:bg-[#43A047]">
               <Plus className="h-4 w-4 mr-1" />
               Créer assignation
             </Button>
@@ -221,29 +260,17 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
           <ScrollArea className="h-[calc(100vh-280px)]">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredAssignments.map((assignment) => (
-                <Card key={assignment.id} className="overflow-hidden" data-testid={`assignment-card-${assignment.id}`}>
+                <Card key={assignment.id} className="overflow-hidden">
                   <CardHeader className="pb-2 bg-muted/50">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-lg font-bold">
-                          {assignment.circuit_number}
-                        </Badge>
-                      </div>
+                      <Badge variant="outline" className="text-lg font-bold">
+                        {assignment.circuit_number}
+                      </Badge>
                       <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => openEditModal(assignment)}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditModal(assignment)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDelete(assignment)}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(assignment)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -257,14 +284,14 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Période:</span>
-                        <span>{assignment.start_date} - {assignment.end_date}</span>
+                        <span className="text-xs">{assignment.start_date} → {assignment.end_date}</span>
                       </div>
                       <div className="mt-2">
                         <span className="text-muted-foreground">Quarts:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {assignment.shifts?.map(shift => (
-                            <Badge key={shift.id} variant="secondary">
-                              {shift.name} ({formatHoursMinutes(calculateShiftDuration(shift))})
+                            <Badge key={shift.id} variant={shift.is_admin ? 'default' : 'secondary'} className={shift.is_admin ? 'bg-blue-600' : ''}>
+                              {shift.name} ({shift.is_admin ? '8:00' : formatHoursMinutes(calculateShiftDuration(shift))})
                             </Badge>
                           ))}
                           {(!assignment.shifts || assignment.shifts.length === 0) && (
@@ -288,7 +315,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
 
       {/* Add/Edit Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingAssignment ? 'Modifier l\'assignation' : 'Créer une assignation'}
@@ -302,7 +329,6 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                   value={formData.circuit_number}
                   onChange={(e) => setFormData({ ...formData, circuit_number: e.target.value })}
                   placeholder="Ex: 204"
-                  data-testid="circuit-number-input"
                 />
               </div>
               <div className="space-y-2">
@@ -311,8 +337,8 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                   value={formData.employee_id || "unassigned"}
                   onValueChange={(v) => setFormData({ ...formData, employee_id: v === "unassigned" ? "" : v })}
                 >
-                  <SelectTrigger data-testid="employee-select">
-                    <SelectValue placeholder="Sélectionner un conducteur" />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">Non assigné</SelectItem>
@@ -327,19 +353,11 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date de début</Label>
-                <Input
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                />
+                <Input type="date" value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>Date de fin</Label>
-                <Input
-                  type="date"
-                  value={formData.end_date}
-                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                />
+                <Input type="date" value={formData.end_date} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} />
               </div>
             </div>
 
@@ -348,149 +366,145 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
               <div className="flex items-center justify-between">
                 <Label className="text-base">Quarts de travail</Label>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => addShift('AM')}>
-                    + AM
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => addShift('MIDI')}>
-                    + MIDI
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => addShift('PM')}>
-                    + PM
-                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addShift('AM')}>+ AM</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addShift('MIDI')}>+ MIDI</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addShift('PM')}>+ PM</Button>
+                  <Button type="button" variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => addShift('ADMIN')}>+ Admin</Button>
                 </div>
               </div>
 
               {formData.shifts.map(shift => (
-                <Card key={shift.id} className="p-3">
+                <Card key={shift.id} className={`p-3 ${shift.is_admin ? 'border-blue-300 bg-blue-50/50 dark:bg-blue-950/20' : ''}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <Badge>{shift.name}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={shift.is_admin ? 'bg-blue-600' : ''}>{shift.name}</Badge>
+                      {shift.is_admin && <span className="text-xs text-blue-600">(8h/jour fixe - Non impacté par jours fériés)</span>}
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">
-                        {formatHoursMinutes(calculateShiftDuration(shift))}
+                        {shift.is_admin ? '08:00' : formatHoursMinutes(calculateShiftDuration(shift))}
                       </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => removeShift(shift.id)}
-                      >
+                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeShift(shift.id)}>
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
 
-                  {/* Blocks */}
-                  <div className="space-y-2">
-                    {shift.blocks.map(block => (
-                      <div key={block.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
-                        <Select
-                          value={block.school_id}
-                          onValueChange={(v) => handleSchoolSelect(shift.id, block.id, v)}
-                        >
-                          <SelectTrigger className="w-40">
-                            <SelectValue placeholder="École" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {schools.map(school => (
-                              <SelectItem key={school.id} value={school.id}>
-                                <div className="flex items-center gap-2">
-                                  <div 
-                                    className="w-3 h-3 rounded-full"
-                                    style={{ backgroundColor: school.color }}
-                                  />
-                                  {school.name}
-                                </div>
-                              </SelectItem>
+                  {/* Blocks - not for admin shifts */}
+                  {!shift.is_admin && (
+                    <div className="space-y-2">
+                      {shift.blocks.map(block => (
+                        <div key={block.id} className="p-2 bg-muted/50 rounded space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* School select */}
+                            <Select value={block.school_id || "none"} onValueChange={(v) => handleSchoolSelect(shift.id, block.id, v === "none" ? "" : v)}>
+                              <SelectTrigger className="w-36">
+                                <SelectValue placeholder="École" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">École...</SelectItem>
+                                {schools.map(school => (
+                                  <SelectItem key={school.id} value={school.id}>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: school.color }} />
+                                      {school.name}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* HLP Before */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">HLP</span>
+                              <Input
+                                type="number"
+                                value={block.hlp_before}
+                                onChange={(e) => updateBlock(shift.id, block.id, { hlp_before: parseInt(e.target.value) || 0 })}
+                                className="w-14 h-8 text-xs"
+                                min="0"
+                                step="5"
+                              />
+                            </div>
+
+                            {/* Start time */}
+                            <Select value={block.start_time} onValueChange={(v) => updateBlock(shift.id, block.id, { start_time: v })}>
+                              <SelectTrigger className="w-20 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TIME_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+
+                            <span className="text-muted-foreground">→</span>
+
+                            {/* End time */}
+                            <Select value={block.end_time} onValueChange={(v) => updateBlock(shift.id, block.id, { end_time: v })}>
+                              <SelectTrigger className="w-20 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TIME_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+
+                            {/* HLP After */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">HLP</span>
+                              <Input
+                                type="number"
+                                value={block.hlp_after}
+                                onChange={(e) => updateBlock(shift.id, block.id, { hlp_after: parseInt(e.target.value) || 0 })}
+                                className="w-14 h-8 text-xs"
+                                min="0"
+                                step="5"
+                              />
+                            </div>
+
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeBlock(shift.id, block.id)}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          {/* Days selection */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground mr-1">Jours:</span>
+                            {DAYS.map(day => (
+                              <button
+                                key={day.id}
+                                type="button"
+                                className={`w-8 h-6 text-xs font-medium rounded border transition-colors ${
+                                  (block.days || ['L', 'M', 'W', 'J', 'V']).includes(day.id)
+                                    ? 'bg-[#4CAF50] text-white border-[#4CAF50]'
+                                    : 'bg-background border-input hover:bg-muted'
+                                }`}
+                                onClick={() => toggleBlockDay(shift.id, block.id, day.id)}
+                              >
+                                {day.label[0]}
+                              </button>
                             ))}
-                          </SelectContent>
-                        </Select>
-
-                        <Select
-                          value={block.start_time}
-                          onValueChange={(v) => updateBlock(shift.id, block.id, { start_time: v })}
-                        >
-                          <SelectTrigger className="w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TIME_OPTIONS.map(t => (
-                              <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        <span className="text-muted-foreground">-</span>
-
-                        <Select
-                          value={block.end_time}
-                          onValueChange={(v) => updateBlock(shift.id, block.id, { end_time: v })}
-                        >
-                          <SelectTrigger className="w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TIME_OPTIONS.map(t => (
-                              <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        <Input
-                          type="number"
-                          value={block.hlp_before}
-                          onChange={(e) => updateBlock(shift.id, block.id, { hlp_before: parseInt(e.target.value) || 0 })}
-                          className="w-16"
-                          placeholder="HLP av"
-                          min="0"
-                          step="5"
-                        />
-                        <Input
-                          type="number"
-                          value={block.hlp_after}
-                          onChange={(e) => updateBlock(shift.id, block.id, { hlp_after: parseInt(e.target.value) || 0 })}
-                          className="w-16"
-                          placeholder="HLP ap"
-                          min="0"
-                          step="5"
-                        />
-
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => removeBlock(shift.id, block.id)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addBlock(shift.id)}
-                      className="w-full"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Ajouter un bloc
-                    </Button>
-                  </div>
+                          </div>
+                        </div>
+                      ))}
+                      <Button type="button" variant="outline" size="sm" onClick={() => addBlock(shift.id)} className="w-full">
+                        <Plus className="h-4 w-4 mr-1" />
+                        Ajouter un bloc
+                      </Button>
+                    </div>
+                  )}
                 </Card>
               ))}
 
               {formData.shifts.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  Ajoutez des quarts de travail (AM, MIDI, PM)
+                  Ajoutez des quarts de travail (AM, MIDI, PM) ou un quart Admin
                 </p>
               )}
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
-                Annuler
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Annuler</Button>
               <Button type="submit" className="bg-[#4CAF50] hover:bg-[#43A047]">
                 {editingAssignment ? 'Enregistrer' : 'Créer'}
               </Button>
