@@ -825,12 +825,15 @@ export default function DashboardPage() {
                           {isAbsent && <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">ABS</Badge>}
                         </div>
                         <div 
-                          className={`px-1 border-r-2 border-border flex items-center justify-center ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`}
+                          className={`px-1 border-r-2 border-border flex items-center justify-center gap-1 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`}
                           style={{ width: CIRCUIT_COL_WIDTH }}
                         >
                           <span className="text-xs text-muted-foreground font-medium">
                             {dayAssignments.map(a => a.circuit_number).join(', ') || '-'}
                           </span>
+                          {dayAssignments.some(a => a.is_adapted) && (
+                            <Accessibility className="h-3 w-3 text-blue-600 flex-shrink-0" title="Circuit adapté" />
+                          )}
                         </div>
                       </div>
                       
