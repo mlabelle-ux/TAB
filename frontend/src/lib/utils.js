@@ -82,7 +82,8 @@ export const getMonday = (dateStr) => {
 };
 
 export const isWeekend = (dateStr) => {
-  const date = new Date(dateStr + 'T00:00:00');
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
   return date.getDay() === 0 || date.getDay() === 6;
 };
 
