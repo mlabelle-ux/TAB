@@ -1,0 +1,91 @@
+{
+  "summary": "Comprehensive testing of Dynamic Hours Calculation feature for Bus Driver Schedule Management System. All features working correctly. Backend 100% pass rate (8/8 tests). Frontend drag & drop with dynamic hours update verified via Playwright automation.",
+  
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "test_report_links": [
+    "/app/tests/test_dynamic_hours.py",
+    "/app/test_reports/pytest/pytest_dynamic_hours.xml"
+  ],
+  
+  "action_items": [],
+  
+  "critical_code_review_comments": [
+    "The calculate_daily_hours_with_reassignments function correctly handles overlap merging - when a block is reassigned to a driver who already has overlapping hours, the system correctly merges intervals to avoid double-counting. This is correct behavior."
+  ],
+  
+  "updated_files": ["/app/tests/test_dynamic_hours.py"],
+  
+  "success_rate": {
+    "backend": "100% (8/8 tests passed)",
+    "frontend": "100% (all dynamic hours features verified)"
+  },
+  
+  "seed_data_creation": "Used existing test data - HARVEY, Claude (circuit 204) and VENNE, Yves (circuit 205) for testing reassignments",
+  
+  "retest_needed": false,
+  
+  "should_main_agent_self_test": false,
+  
+  "features_tested": {
+    "dynamic_hours_reassign_to_driver": {
+      "status": "PASS",
+      "details": "When Sainte-Paule block was dragged from HARVEY to VENNE: HARVEY lost 1h30 (05:30 -> 04:00), VENNE gained 40min (01:10 -> 01:50). The difference is due to correct overlap merging - VENNE already had a block from 07:00-08:00 that overlaps with the reassigned block."
+    },
+    "dynamic_hours_reassign_to_remplacements": {
+      "status": "PASS",
+      "details": "When ES Du Flambeau block was dragged to Remplacements: HARVEY lost 1h45 (04:00 -> 02:15). Block appeared in Remplacements row with circuit number 204. Badge count increased from 2 to 3."
+    },
+    "hlp_included_in_calculation": {
+      "status": "PASS",
+      "details": "HLP (Hors Ligne Payé) is correctly included in hour calculations. Block 06:30-07:30 with HLP 15min before and 15min after = 90 minutes total."
+    },
+    "weekly_hours_update": {
+      "status": "PASS",
+      "details": "Weekly total hours update correctly after reassignment. HARVEY weekly: 27:30 -> 26:00 -> 24:15 as blocks were reassigned."
+    },
+    "visual_display_jour_column": {
+      "status": "PASS",
+      "details": "Jour (Day) column displays correct hours after reassignment and updates dynamically."
+    },
+    "visual_display_semaine_column": {
+      "status": "PASS",
+      "details": "Semaine (Week) column displays correct total hours after reassignment and updates dynamically."
+    },
+    "toast_notifications": {
+      "status": "PASS",
+      "details": "Toast notifications appear correctly: 'Circuit 204 assigné à VENNE, Yves pour le 2026-01-12' and 'Circuit 204 mis en remplacement pour le 2026-01-12'"
+    }
+  },
+  
+  "backend_api_tests": {
+    "test_get_initial_hours_for_employee": "PASS - Schedule returns daily_hours and weekly_total for each employee",
+    "test_reassign_block_to_another_driver_hours_change": "PASS - Original driver loses hours, target driver gains hours",
+    "test_reassign_block_to_remplacements_hours_change": "PASS - Original driver loses hours when block moved to Remplacements (new_employee_id=null)",
+    "test_hlp_included_in_hour_calculation": "PASS - HLP before and after are included in duration calculations",
+    "test_weekly_hours_update_after_reassignment": "PASS - Weekly total decreases after reassignment",
+    "test_reassignment_index_in_schedule_response": "PASS - reassignment_index included in /api/schedule response",
+    "test_schedule_returns_daily_hours": "PASS - daily_hours dict with date keys returned",
+    "test_schedule_returns_weekly_total_formatted": "PASS - weekly_total_formatted in HH:MM format"
+  },
+  
+  "frontend_ui_tests": {
+    "drag_block_to_driver": "PASS - Block can be dragged from one driver to another",
+    "drag_block_to_remplacements": "PASS - Block can be dragged to Remplacements zone",
+    "hours_update_dynamically": "PASS - Jour and Semaine columns update immediately after drag & drop",
+    "toast_on_reassignment": "PASS - Success toast appears after reassignment"
+  },
+  
+  "test_credentials": "password: 1600 (Fernand Alary)",
+  
+  "context_for_next_testing_agent": "Dynamic hours calculation feature fully working. The calculate_daily_hours_with_reassignments function in server.py correctly: 1) Subtracts hours for blocks reassigned AWAY from an employee, 2) Adds hours for blocks reassigned TO an employee, 3) Handles overlap merging correctly (if reassigned block overlaps with existing blocks, only the non-overlapping portion is added). Test data used: HARVEY, Claude (circuit 204) with Sainte-Paule and ES Du Flambeau blocks, VENNE, Yves (circuit 205) with HT Des Érables block."
+}
