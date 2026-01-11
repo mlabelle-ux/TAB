@@ -264,7 +264,7 @@ export default function EmployeesPage({ employees, onUpdate }) {
                 )}
               </TableBody>
             </Table>
-          </ScrollArea>
+          </div>
         </CardContent>
       </Card>
 
