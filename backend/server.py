@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, LongTable
 from reportlab.lib.styles import getSampleStyleSheet
 
 ROOT_DIR = Path(__file__).parent
