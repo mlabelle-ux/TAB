@@ -629,6 +629,60 @@ async def delete_holiday(holiday_id: str):
         raise HTTPException(status_code=404, detail="Jour férié non trouvé")
     return {"success": True}
 
+# ============== TEMPORARY REASSIGNMENT ROUTES (Drag & Drop) ==============
+
+@api_router.get("/temporary-reassignments")
+async def get_temporary_reassignments(date: str = None):
+    """Get temporary reassignments, optionally filtered by date"""
+    query = {}
+    if date:
+        query["date"] = date
+    reassignments = await db.temporary_reassignments.find(query, {"_id": 0}).to_list(500)
+    return reassignments
+
+@api_router.post("/temporary-reassignments")
+async def create_temporary_reassignment(data: TemporaryReassignmentCreate):
+    """Create or update a temporary reassignment for drag & drop"""
+    # Vérifier si une réassignation existe déjà pour ce bloc/quart à cette date
+    existing = await db.temporary_reassignments.find_one({
+        "date": data.date,
+        "assignment_id": data.assignment_id,
+        "shift_id": data.shift_id,
+        "block_id": data.block_id
+    }, {"_id": 0})
+    
+    if existing:
+        # Mettre à jour la réassignation existante
+        await db.temporary_reassignments.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "new_employee_id": data.new_employee_id,
+                "original_employee_id": data.original_employee_id
+            }}
+        )
+        updated = await db.temporary_reassignments.find_one({"id": existing["id"]}, {"_id": 0})
+        return updated
+    
+    # Créer une nouvelle réassignation
+    reassignment = TemporaryReassignment(**data.model_dump())
+    doc = reassignment.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.temporary_reassignments.insert_one(doc)
+    return reassignment.model_dump()
+
+@api_router.delete("/temporary-reassignments/{reassignment_id}")
+async def delete_temporary_reassignment(reassignment_id: str):
+    result = await db.temporary_reassignments.delete_one({"id": reassignment_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Réassignation non trouvée")
+    return {"success": True}
+
+@api_router.delete("/temporary-reassignments/by-date/{date}")
+async def delete_reassignments_by_date(date: str):
+    """Delete all temporary reassignments for a specific date"""
+    result = await db.temporary_reassignments.delete_many({"date": date})
+    return {"success": True, "deleted_count": result.deleted_count}
+
 # ============== SCHEDULE ROUTES ==============
 
 @api_router.get("/schedule")
