@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createEmployee, updateEmployee, deleteEmployee } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -14,14 +14,16 @@ import {
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { ScrollArea } from '../components/ui/scroll-area';
-import { Plus, Edit, Trash2, Search, UserPlus } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserPlus, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function EmployeesPage({ employees, onUpdate }) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
   const [formData, setFormData] = useState({
+    matricule: '',
     name: '',
     hire_date: '',
     phone: '',
@@ -29,15 +31,53 @@ export default function EmployeesPage({ employees, onUpdate }) {
     berline: ''
   });
 
-  const filteredEmployees = employees.filter(emp =>
-    emp.name.toLowerCase().includes(search.toLowerCase()) ||
-    emp.email.toLowerCase().includes(search.toLowerCase()) ||
-    emp.berline.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filter and sort employees
+  const filteredAndSortedEmployees = useMemo(() => {
+    let result = employees.filter(emp =>
+      emp.name.toLowerCase().includes(search.toLowerCase()) ||
+      emp.email?.toLowerCase().includes(search.toLowerCase()) ||
+      emp.matricule?.toLowerCase().includes(search.toLowerCase()) ||
+      emp.berline?.toLowerCase().includes(search.toLowerCase())
+    );
+
+    // Sort
+    result.sort((a, b) => {
+      let aVal = a[sortConfig.key] || '';
+      let bVal = b[sortConfig.key] || '';
+      
+      if (sortConfig.key === 'hire_date') {
+        aVal = aVal || '9999-99-99';
+        bVal = bVal || '9999-99-99';
+      }
+      
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [employees, search, sortConfig]);
+
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const SortIcon = ({ columnKey }) => {
+    if (sortConfig.key !== columnKey) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+    }
+    return sortConfig.direction === 'asc' 
+      ? <ArrowUp className="h-4 w-4 ml-1" />
+      : <ArrowDown className="h-4 w-4 ml-1" />;
+  };
 
   const openAddModal = () => {
     setEditingEmployee(null);
     setFormData({
+      matricule: '',
       name: '',
       hire_date: new Date().toISOString().split('T')[0],
       phone: '',
@@ -50,6 +90,7 @@ export default function EmployeesPage({ employees, onUpdate }) {
   const openEditModal = (emp) => {
     setEditingEmployee(emp);
     setFormData({
+      matricule: emp.matricule || '',
       name: emp.name,
       hire_date: emp.hire_date,
       phone: emp.phone || '',
@@ -77,7 +118,8 @@ export default function EmployeesPage({ employees, onUpdate }) {
       setShowModal(false);
       onUpdate();
     } catch (error) {
-      toast.error('Erreur lors de l\'enregistrement');
+      const message = error.response?.data?.detail || 'Erreur lors de l\'enregistrement';
+      toast.error(message);
     }
   };
 
@@ -124,21 +166,71 @@ export default function EmployeesPage({ employees, onUpdate }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nom</TableHead>
-                  <TableHead>Date d'embauche</TableHead>
-                  <TableHead>Téléphone</TableHead>
-                  <TableHead>Courriel</TableHead>
-                  <TableHead>Berline</TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort('matricule')}
+                  >
+                    <div className="flex items-center">
+                      Matricule
+                      <SortIcon columnKey="matricule" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort('name')}
+                  >
+                    <div className="flex items-center">
+                      Conducteur
+                      <SortIcon columnKey="name" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort('hire_date')}
+                  >
+                    <div className="flex items-center">
+                      Date d'embauche
+                      <SortIcon columnKey="hire_date" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort('email')}
+                  >
+                    <div className="flex items-center">
+                      Courriel
+                      <SortIcon columnKey="email" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort('phone')}
+                  >
+                    <div className="flex items-center">
+                      Téléphone
+                      <SortIcon columnKey="phone" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort('berline')}
+                  >
+                    <div className="flex items-center">
+                      Berline
+                      <SortIcon columnKey="berline" />
+                    </div>
+                  </TableHead>
                   <TableHead className="w-24">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredEmployees.map((emp) => (
+                {filteredAndSortedEmployees.map((emp) => (
                   <TableRow key={emp.id} data-testid={`employee-row-${emp.id}`}>
+                    <TableCell className="font-mono">{emp.matricule || '-'}</TableCell>
                     <TableCell className="font-medium">{emp.name}</TableCell>
                     <TableCell>{emp.hire_date}</TableCell>
-                    <TableCell>{emp.phone || '-'}</TableCell>
                     <TableCell>{emp.email || '-'}</TableCell>
+                    <TableCell>{emp.phone || '-'}</TableCell>
                     <TableCell>{emp.berline || '-'}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -163,9 +255,9 @@ export default function EmployeesPage({ employees, onUpdate }) {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filteredEmployees.length === 0 && (
+                {filteredAndSortedEmployees.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       {search ? 'Aucun résultat' : 'Aucun employé'}
                     </TableCell>
                   </TableRow>
@@ -185,8 +277,30 @@ export default function EmployeesPage({ employees, onUpdate }) {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="matricule">Matricule</Label>
+                <Input
+                  id="matricule"
+                  value={formData.matricule}
+                  onChange={(e) => setFormData({ ...formData, matricule: e.target.value })}
+                  placeholder="Ex: EMP001"
+                  data-testid="employee-matricule-input"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="berline">Berline</Label>
+                <Input
+                  id="berline"
+                  value={formData.berline}
+                  onChange={(e) => setFormData({ ...formData, berline: e.target.value })}
+                  placeholder="Numéro de berline"
+                  data-testid="employee-berline-input"
+                />
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="name">Nom *</Label>
+              <Label htmlFor="name">Nom complet *</Label>
               <Input
                 id="name"
                 value={formData.name}
@@ -206,16 +320,6 @@ export default function EmployeesPage({ employees, onUpdate }) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Téléphone</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="514-555-1234"
-                data-testid="employee-phone-input"
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="email">Courriel</Label>
               <Input
                 id="email"
@@ -227,13 +331,13 @@ export default function EmployeesPage({ employees, onUpdate }) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="berline">Berline</Label>
+              <Label htmlFor="phone">Téléphone</Label>
               <Input
-                id="berline"
-                value={formData.berline}
-                onChange={(e) => setFormData({ ...formData, berline: e.target.value })}
-                placeholder="Numéro de berline"
-                data-testid="employee-berline-input"
+                id="phone"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="514-555-1234"
+                data-testid="employee-phone-input"
               />
             </div>
             <DialogFooter>
