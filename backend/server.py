@@ -206,8 +206,75 @@ def calculate_shift_duration(shift: dict, date_str: str = None, is_admin: bool =
         total += (end - start) + block.get('hlp_before', 0) + block.get('hlp_after', 0)
     return total
 
+def merge_time_intervals(intervals: list) -> list:
+    """Merge overlapping time intervals to avoid double counting"""
+    if not intervals:
+        return []
+    
+    # Sort by start time
+    sorted_intervals = sorted(intervals, key=lambda x: x[0])
+    merged = [sorted_intervals[0]]
+    
+    for start, end in sorted_intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:  # Overlap detected
+            # Merge by extending the end time
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    
+    return merged
+
+def calculate_daily_hours_no_overlap(assignments: list, temp_tasks: list, date_str: str, holidays: set = None) -> int:
+    """Calculate total minutes worked on a specific date without counting overlaps twice"""
+    day_letter = get_day_letter(date_str)
+    
+    # Collect all time intervals
+    intervals = []
+    has_admin_shift = False
+    
+    for assignment in assignments:
+        if not (assignment.get('start_date') <= date_str <= assignment.get('end_date')):
+            continue
+        
+        for shift in assignment.get('shifts', []):
+            if shift.get('is_admin'):
+                has_admin_shift = True
+                # Admin shifts are 8h fixed, add as 6:00-14:00 interval for merging purposes
+                intervals.append((6 * 60, 14 * 60))
+            else:
+                for block in shift.get('blocks', []):
+                    # Check if block applies to this day
+                    if day_letter not in block.get('days', ['L', 'M', 'W', 'J', 'V']):
+                        continue
+                    
+                    start = time_to_minutes(block['start_time']) - block.get('hlp_before', 0)
+                    end = time_to_minutes(block['end_time']) + block.get('hlp_after', 0)
+                    intervals.append((start, end))
+    
+    # Add temporary tasks
+    for task in temp_tasks:
+        if task.get('date') == date_str:
+            start = time_to_minutes(task['start_time'])
+            end = time_to_minutes(task['end_time'])
+            intervals.append((start, end))
+    
+    # Check if holiday (admin shifts are not affected)
+    if holidays and date_str in holidays:
+        if has_admin_shift:
+            return 8 * 60  # Only admin hours count on holidays
+        return 0
+    
+    # Merge overlapping intervals
+    merged = merge_time_intervals(intervals)
+    
+    # Calculate total minutes
+    total = sum(end - start for start, end in merged)
+    
+    return total
+
 def calculate_daily_hours(assignments: list, temp_tasks: list, date_str: str, holidays: set = None, is_admin_exempt: bool = False) -> int:
-    """Calculate total minutes worked on a specific date"""
+    """Calculate total minutes worked on a specific date (legacy function for PDF reports)"""
     # Check if holiday and not admin
     if holidays and date_str in holidays and not is_admin_exempt:
         return 0
