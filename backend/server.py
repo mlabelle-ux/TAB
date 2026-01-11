@@ -660,26 +660,33 @@ async def get_schedule(date: str = None, week_start: str = None):
             # Check absence for specific shifts
             emp_absence_today = [a for a in emp_absences if a['start_date'] <= date_str <= a['end_date']]
             
-            day_minutes = 0
+            # Filter assignments and tasks based on absence
+            active_assignments = []
             for assignment in emp_assignments:
                 if not (assignment.get('start_date') <= date_str <= assignment.get('end_date')):
                     continue
+                
+                filtered_shifts = []
                 for shift in assignment.get('shifts', []):
                     # Check if absent for this shift type
                     is_absent_for_shift = any(
                         not abs_entry.get('shift_types') or shift.get('name') in abs_entry.get('shift_types', [])
                         for abs_entry in emp_absence_today
                     )
-                    if is_absent_for_shift and emp_absence_today:
-                        continue
-                    day_minutes += calculate_shift_duration(shift, date_str)
+                    if not (is_absent_for_shift and emp_absence_today):
+                        filtered_shifts.append(shift)
+                
+                if filtered_shifts:
+                    active_assignments.append({**assignment, 'shifts': filtered_shifts})
             
-            # Add temp tasks
-            for task in emp_temp_tasks:
-                if task.get('date') == date_str:
-                    start = time_to_minutes(task['start_time'])
-                    end = time_to_minutes(task['end_time'])
-                    day_minutes += (end - start)
+            active_tasks = []
+            if not emp_absence_today:  # No tasks if absent
+                for task in emp_temp_tasks:
+                    if task.get('date') == date_str:
+                        active_tasks.append(task)
+            
+            # Calculate hours without double counting overlaps
+            day_minutes = calculate_daily_hours_no_overlap(active_assignments, active_tasks, date_str, holiday_dates)
             
             daily_hours[date_str] = day_minutes
             weekly_total += day_minutes
