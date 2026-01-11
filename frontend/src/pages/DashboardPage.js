@@ -479,15 +479,24 @@ export default function DashboardPage() {
         return a.name.localeCompare(b.name);
       }
       
-      // Sort by circuit number
+      // Sort by circuit number (numeric comparison)
       const aAssignments = assignments.filter(ass => ass.employee_id === a.id);
       const bAssignments = assignments.filter(ass => ass.employee_id === b.id);
       
-      const aCircuit = aAssignments.length > 0 ? Math.min(...aAssignments.map(ass => ass.circuit_number)) : 'ZZZZ';
-      const bCircuit = bAssignments.length > 0 ? Math.min(...bAssignments.map(ass => ass.circuit_number)) : 'ZZZZ';
+      // Parse circuit numbers as integers for proper sorting
+      const getMinCircuit = (assignmentList) => {
+        if (assignmentList.length === 0) return Infinity;
+        const nums = assignmentList.map(ass => {
+          const num = parseInt(ass.circuit_number, 10);
+          return isNaN(num) ? Infinity : num;
+        });
+        return Math.min(...nums);
+      };
       
-      if (aCircuit < bCircuit) return -1;
-      if (aCircuit > bCircuit) return 1;
+      const aCircuit = getMinCircuit(aAssignments);
+      const bCircuit = getMinCircuit(bAssignments);
+      
+      if (aCircuit !== bCircuit) return aCircuit - bCircuit;
       return a.name.localeCompare(b.name);
     });
   }, [employees, assignments, sortMode]);
