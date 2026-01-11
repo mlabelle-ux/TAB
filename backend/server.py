@@ -892,8 +892,16 @@ async def get_schedule(date: str = None, week_start: str = None):
                     if task.get('date') == date_str:
                         active_tasks.append(task)
             
-            # Calculate hours without double counting overlaps
-            day_minutes = calculate_daily_hours_no_overlap(active_assignments, active_tasks, date_str, holiday_dates)
+            # Calculate hours with temporary reassignments taken into account
+            day_minutes = calculate_daily_hours_with_reassignments(
+                emp_id=emp_id,
+                emp_assignments=active_assignments,
+                emp_temp_tasks=active_tasks,
+                date_str=date_str,
+                holidays=holiday_dates,
+                reassignment_index=reassignment_index,
+                all_assignments=assignments
+            )
             
             daily_hours[date_str] = day_minutes
             weekly_total += day_minutes
