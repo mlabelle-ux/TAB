@@ -102,6 +102,7 @@ class Assignment(BaseModel):
     employee_name: str = ""
     start_date: str
     end_date: str
+    is_adapted: bool = False  # Circuit adapté (handicapé)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class AssignmentCreate(BaseModel):
@@ -110,6 +111,7 @@ class AssignmentCreate(BaseModel):
     employee_id: Optional[str] = None
     start_date: str
     end_date: str
+    is_adapted: bool = False
 
 class TemporaryTask(BaseModel):
     model_config = ConfigDict(extra="ignore")
