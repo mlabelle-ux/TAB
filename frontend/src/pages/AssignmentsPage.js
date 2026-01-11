@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createAssignment, updateAssignment, deleteAssignment } from '../lib/api';
 import { getContrastColor, formatHoursMinutes, timeToMinutes } from '../lib/utils';
 import { Button } from '../components/ui/button';
@@ -15,13 +15,13 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Checkbox } from '../components/ui/checkbox';
 import { ScrollArea } from '../components/ui/scroll-area';
-import { Plus, Edit, Trash2, Search, Bus, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Bus, X, Accessibility } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 
 const generateTimeOptions = () => {
   const options = [];
-  for (let h = 5; h <= 20; h++) {
+  for (let h = 5; h <= 19; h++) {
     for (let m = 0; m < 60; m += 5) {
       const time = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
       options.push(time);
@@ -39,6 +39,14 @@ const DAYS = [
   { id: 'V', label: 'Ven' },
 ];
 
+// Périodes prédéfinies
+const PREDEFINED_PERIODS = [
+  { label: 'Année scolaire 2024-2025', start: '2024-08-26', end: '2025-06-20' },
+  { label: 'Année scolaire 2025-2026', start: '2025-08-25', end: '2026-06-19' },
+  { label: '1er semestre 2024-2025', start: '2024-08-26', end: '2025-01-17' },
+  { label: '2e semestre 2024-2025', start: '2025-01-20', end: '2025-06-20' },
+];
+
 export default function AssignmentsPage({ assignments, employees, schools, onUpdate }) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -48,8 +56,14 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
     employee_id: '',
     start_date: new Date().toISOString().split('T')[0],
     end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    shifts: []
+    shifts: [],
+    is_adapted: false  // Case "Adapté?"
   });
+
+  // Trier les employés par ordre alphabétique pour la sélection
+  const sortedEmployees = useMemo(() => {
+    return [...employees].sort((a, b) => a.name.localeCompare(b.name));
+  }, [employees]);
 
   const filteredAssignments = assignments.filter(a =>
     a.circuit_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -63,7 +77,8 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
       employee_id: '',
       start_date: new Date().toISOString().split('T')[0],
       end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      shifts: []
+      shifts: [],
+      is_adapted: false
     });
     setShowModal(true);
   };
@@ -75,13 +90,14 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
       employee_id: assignment.employee_id || '',
       start_date: assignment.start_date,
       end_date: assignment.end_date,
-      shifts: assignment.shifts || []
+      shifts: assignment.shifts || [],
+      is_adapted: assignment.is_adapted || false
     });
     setShowModal(true);
   };
 
   const addShift = (type) => {
-    const isAdmin = type === 'ADMIN';
+    const isAdmin = type === 'ADMIN' || type === 'MECANO';
     const newShift = {
       id: uuidv4(),
       name: type,
@@ -89,13 +105,13 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
       is_admin: isAdmin
     };
     
-    // Admin shift gets default 6h-18h block
+    // Admin/Mécano shift gets default 6h-18h block
     if (isAdmin) {
       newShift.blocks = [{
         id: uuidv4(),
         school_id: '',
-        school_name: 'Administration',
-        school_color: '#607D8B',
+        school_name: type === 'MECANO' ? 'Mécanique' : 'Administration',
+        school_color: type === 'MECANO' ? '#795548' : '#607D8B',
         start_time: '06:00',
         end_time: '18:00',
         hlp_before: 0,
@@ -186,7 +202,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
   };
 
   const calculateShiftDuration = (shift) => {
-    if (shift.is_admin) return 8 * 60; // 8h fixe pour admin
+    if (shift.is_admin) return 8 * 60; // 8h fixe pour admin/mécano
     
     let total = 0;
     for (const block of shift.blocks || []) {
@@ -195,6 +211,14 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
       total += (end - start) + (block.hlp_before || 0) + (block.hlp_after || 0);
     }
     return total;
+  };
+
+  const handlePredefinedPeriod = (period) => {
+    setFormData({
+      ...formData,
+      start_date: period.start,
+      end_date: period.end
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -263,9 +287,14 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                 <Card key={assignment.id} className="overflow-hidden">
                   <CardHeader className="pb-2 bg-muted/50">
                     <div className="flex items-center justify-between">
-                      <Badge variant="outline" className="text-lg font-bold">
-                        {assignment.circuit_number}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-lg font-bold">
+                          {assignment.circuit_number}
+                        </Badge>
+                        {assignment.is_adapted && (
+                          <Accessibility className="h-5 w-5 text-blue-600" title="Circuit adapté" />
+                        )}
+                      </div>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditModal(assignment)}>
                           <Edit className="h-4 w-4" />
@@ -290,7 +319,11 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                         <span className="text-muted-foreground">Quarts:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {assignment.shifts?.map(shift => (
-                            <Badge key={shift.id} variant={shift.is_admin ? 'default' : 'secondary'} className={shift.is_admin ? 'bg-blue-600' : ''}>
+                            <Badge 
+                              key={shift.id} 
+                              variant={shift.is_admin ? 'default' : 'secondary'} 
+                              className={shift.is_admin ? (shift.name === 'MECANO' ? 'bg-amber-700' : 'bg-blue-600') : ''}
+                            >
                               {shift.name} ({shift.is_admin ? '8:00' : formatHoursMinutes(calculateShiftDuration(shift))})
                             </Badge>
                           ))}
@@ -325,14 +358,28 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Numéro de circuit *</Label>
-                <Input
-                  value={formData.circuit_number}
-                  onChange={(e) => setFormData({ ...formData, circuit_number: e.target.value })}
-                  placeholder="Ex: 204"
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={formData.circuit_number}
+                    onChange={(e) => setFormData({ ...formData, circuit_number: e.target.value })}
+                    placeholder="Ex: 204"
+                    className="flex-1"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="is_adapted"
+                      checked={formData.is_adapted}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_adapted: checked })}
+                    />
+                    <Label htmlFor="is_adapted" className="text-sm cursor-pointer flex items-center gap-1">
+                      <Accessibility className="h-4 w-4" />
+                      Adapté?
+                    </Label>
+                  </div>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Conducteur</Label>
+                <Label>Conducteur (trié alphabétiquement)</Label>
                 <Select
                   value={formData.employee_id || "unassigned"}
                   onValueChange={(v) => setFormData({ ...formData, employee_id: v === "unassigned" ? "" : v })}
@@ -342,7 +389,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">Non assigné</SelectItem>
-                    {employees.map(emp => (
+                    {sortedEmployees.map(emp => (
                       <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -350,14 +397,32 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Date de début</Label>
-                <Input type="date" value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} />
+            {/* Périodes prédéfinies */}
+            <div className="space-y-2">
+              <Label>Période d'assignation</Label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {PREDEFINED_PERIODS.map((period) => (
+                  <Button
+                    key={period.label}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePredefinedPeriod(period)}
+                    className="text-xs"
+                  >
+                    {period.label}
+                  </Button>
+                ))}
               </div>
-              <div className="space-y-2">
-                <Label>Date de fin</Label>
-                <Input type="date" value={formData.end_date} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Date de début</Label>
+                  <Input type="date" value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Date de fin</Label>
+                  <Input type="date" value={formData.end_date} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} />
+                </div>
               </div>
             </div>
 
@@ -370,15 +435,20 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                   <Button type="button" variant="outline" size="sm" onClick={() => addShift('MIDI')}>+ MIDI</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => addShift('PM')}>+ PM</Button>
                   <Button type="button" variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => addShift('ADMIN')}>+ Admin</Button>
+                  <Button type="button" variant="default" size="sm" className="bg-amber-700 hover:bg-amber-800" onClick={() => addShift('MECANO')}>+ Mécano</Button>
                 </div>
               </div>
 
               {formData.shifts.map(shift => (
-                <Card key={shift.id} className={`p-3 ${shift.is_admin ? 'border-blue-300 bg-blue-50/50 dark:bg-blue-950/20' : ''}`}>
+                <Card key={shift.id} className={`p-3 ${shift.is_admin ? (shift.name === 'MECANO' ? 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20' : 'border-blue-300 bg-blue-50/50 dark:bg-blue-950/20') : ''}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <Badge className={shift.is_admin ? 'bg-blue-600' : ''}>{shift.name}</Badge>
-                      {shift.is_admin && <span className="text-xs text-blue-600">(8h/jour fixe - Non impacté par jours fériés)</span>}
+                      <Badge className={shift.is_admin ? (shift.name === 'MECANO' ? 'bg-amber-700' : 'bg-blue-600') : ''}>{shift.name}</Badge>
+                      {shift.is_admin && (
+                        <span className={`text-xs ${shift.name === 'MECANO' ? 'text-amber-700' : 'text-blue-600'}`}>
+                          (8h/jour fixe - Non impacté par jours fériés)
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">
@@ -390,7 +460,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                     </div>
                   </div>
 
-                  {/* Blocks - not for admin shifts */}
+                  {/* Blocks - not for admin/mecano shifts */}
                   {!shift.is_admin && (
                     <div className="space-y-2">
                       {shift.blocks.map(block => (
@@ -498,7 +568,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
 
               {formData.shifts.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  Ajoutez des quarts de travail (AM, MIDI, PM) ou un quart Admin
+                  Ajoutez des quarts de travail (AM, MIDI, PM) ou des quarts Admin/Mécano
                 </p>
               )}
             </div>
