@@ -54,8 +54,8 @@ export const getSchedule = (params) => api.get('/schedule', { params });
 export const checkConflict = (data) => api.post('/check-conflict', data);
 
 // Reports
-export const getHoursReportPDF = (startDate, endDate, employeeIds = '') => {
-  return `${API}/reports/hours-pdf?start_date=${startDate}&end_date=${endDate}&employee_ids=${employeeIds}`;
+export const getHoursReportPDF = (startDate, endDate, employeeIds = '', sortBy = 'name') => {
+  return `${API}/reports/hours-pdf?start_date=${startDate}&end_date=${endDate}&employee_ids=${employeeIds}&sort_by=${sortBy}`;
 };
 
 export default api;
