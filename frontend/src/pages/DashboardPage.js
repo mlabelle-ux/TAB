@@ -24,13 +24,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar as CalendarComponent } from '../components/ui/calendar';
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
   Bus, UserX, Info, CalendarDays, ArrowUpDown
 } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
-import { Calendar as CalendarComponent } from '../components/ui/calendar';
 import { toast } from 'sonner';
 
 import EmployeesPage from './EmployeesPage';
@@ -47,9 +47,6 @@ const LOGO_URL = 'https://customer-assets.emergentagent.com/job_route-manager-27
 const SCHEDULE_START_HOUR = 5;
 const SCHEDULE_END_HOUR = 19; // 19h00 = 18h59 max
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR; // 14 heures
-
-// Default pixels per hour (will be recalculated dynamically)
-const DEFAULT_PIXELS_PER_HOUR = 80;
 
 // Column widths - Conducteur élargi
 const DRIVER_COL_WIDTH = 200;
@@ -68,15 +65,15 @@ const generateTimeMarkers = (pixelsPerHour) => {
   for (let h = SCHEDULE_START_HOUR; h < SCHEDULE_END_HOUR; h++) {
     markers.push({ 
       hour: h, 
-      label: `${h}h00`, 
+      label: `${h}h`, 
       position: (h - SCHEDULE_START_HOUR) * pixelsPerHour 
     });
   }
   return markers;
 };
 
-// Block with tooltip
-const ScheduleBlock = ({ block, viewMode, showHlpInColor = false }) => {
+// Block with tooltip - now accepts pixelsPerHour as prop
+const ScheduleBlock = ({ block, viewMode, showHlpInColor = false, pixelsPerHour, totalScheduleWidth }) => {
   const startMinutes = timeToMinutes(block.start_time);
   const endMinutes = timeToMinutes(block.end_time);
   const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
@@ -88,10 +85,10 @@ const ScheduleBlock = ({ block, viewMode, showHlpInColor = false }) => {
   const effectiveStart = showHlpInColor ? startMinutes - hlpBeforeMinutes : startMinutes;
   const effectiveEnd = showHlpInColor ? endMinutes + hlpAfterMinutes : endMinutes;
   
-  const left = ((effectiveStart - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
-  const width = ((effectiveEnd - effectiveStart) / 60) * PIXELS_PER_HOUR;
+  const left = ((effectiveStart - scheduleStartMinutes) / 60) * pixelsPerHour;
+  const width = ((effectiveEnd - effectiveStart) / 60) * pixelsPerHour;
   
-  if (left + width < 0 || left > TOTAL_SCHEDULE_WIDTH) return null;
+  if (left + width < 0 || left > totalScheduleWidth) return null;
   
   const bgColor = block.school_color || '#9E9E9E';
   const textColor = getContrastColor(bgColor);
@@ -108,10 +105,10 @@ const ScheduleBlock = ({ block, viewMode, showHlpInColor = false }) => {
   
   // Mode détaillé: HLP séparés
   if (viewMode === 'detailed' && !showHlpInColor) {
-    const hlpBeforeWidth = (hlpBeforeMinutes / 60) * PIXELS_PER_HOUR;
-    const hlpAfterWidth = (hlpAfterMinutes / 60) * PIXELS_PER_HOUR;
-    const mainLeft = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
-    const mainWidth = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
+    const hlpBeforeWidth = (hlpBeforeMinutes / 60) * pixelsPerHour;
+    const hlpAfterWidth = (hlpAfterMinutes / 60) * pixelsPerHour;
+    const mainLeft = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
+    const mainWidth = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
     
     return (
       <TooltipProvider>
@@ -181,7 +178,7 @@ const ScheduleBlock = ({ block, viewMode, showHlpInColor = false }) => {
   );
 };
 
-const ShiftBlock = ({ shift, assignment, viewMode, selectedDate }) => {
+const ShiftBlock = ({ shift, assignment, viewMode, selectedDate, pixelsPerHour, totalScheduleWidth }) => {
   if (!shift.blocks || shift.blocks.length === 0) return null;
   
   const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
@@ -204,8 +201,8 @@ const ShiftBlock = ({ shift, assignment, viewMode, selectedDate }) => {
     const startMinutes = Math.min(...allTimes);
     const endMinutes = Math.max(...allTimes);
     
-    const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
-    const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
+    const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
+    const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
     
     return (
       <TooltipProvider>
@@ -240,19 +237,21 @@ const ShiftBlock = ({ shift, assignment, viewMode, selectedDate }) => {
       block={block}
       viewMode={viewMode}
       showHlpInColor={showHlpInColor}
+      pixelsPerHour={pixelsPerHour}
+      totalScheduleWidth={totalScheduleWidth}
     />
   ));
 };
 
-const TemporaryTaskBlock = ({ task }) => {
+const TemporaryTaskBlock = ({ task, pixelsPerHour, totalScheduleWidth }) => {
   const startMinutes = timeToMinutes(task.start_time);
   const endMinutes = timeToMinutes(task.end_time);
   const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
   
-  const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
-  const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
+  const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
+  const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
   
-  if (left + width < 0 || left > TOTAL_SCHEDULE_WIDTH) return null;
+  if (left + width < 0 || left > totalScheduleWidth) return null;
   
   const bgColor = task.school_color || '#FF69B4';
   const textColor = getContrastColor(bgColor);
@@ -378,6 +377,7 @@ export default function DashboardPage() {
   
   const [activeTab, setActiveTab] = useState('schedule');
   const [viewMode, setViewMode] = useState('detailed');
+  const [sortMode, setSortMode] = useState('circuit'); // 'circuit' or 'name'
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     const day = today.getDay();
@@ -386,6 +386,7 @@ export default function DashboardPage() {
     return today.toISOString().split('T')[0];
   });
   const [weekDates, setWeekDates] = useState([]);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   
   const [employees, setEmployees] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -399,11 +400,32 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showTempTaskModal, setShowTempTaskModal] = useState(false);
   
-  // Refs for synchronized scrolling
+  // Refs for synchronized scrolling and dynamic width calculation
   const topScrollRef = useRef(null);
   const bottomScrollRef = useRef(null);
   const headerScrollRef = useRef(null);
   const bodyScrollRef = useRef(null);
+  const containerRef = useRef(null);
+  
+  // Calculate dynamic pixels per hour based on available width
+  const [pixelsPerHour, setPixelsPerHour] = useState(80);
+  const totalScheduleWidth = useMemo(() => TOTAL_HOURS * pixelsPerHour, [pixelsPerHour]);
+  const timeMarkers = useMemo(() => generateTimeMarkers(pixelsPerHour), [pixelsPerHour]);
+  
+  useEffect(() => {
+    const calculateWidth = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.offsetWidth;
+        const availableWidth = containerWidth - FIXED_LEFT_WIDTH - FIXED_RIGHT_WIDTH - 40; // 40px for padding/borders
+        const calculatedPixelsPerHour = Math.max(60, availableWidth / TOTAL_HOURS);
+        setPixelsPerHour(calculatedPixelsPerHour);
+      }
+    };
+    
+    calculateWidth();
+    window.addEventListener('resize', calculateWidth);
+    return () => window.removeEventListener('resize', calculateWidth);
+  }, []);
   
   // Synchronize all horizontal scrolls
   const handleScroll = (source) => (e) => {
@@ -450,9 +472,14 @@ export default function DashboardPage() {
     fetchData();
   }, [fetchData]);
   
-  // Sort employees by circuit number, then those without assignments
+  // Sort employees based on sortMode
   const sortedEmployees = useMemo(() => {
     return [...employees].sort((a, b) => {
+      if (sortMode === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      
+      // Sort by circuit number
       const aAssignments = assignments.filter(ass => ass.employee_id === a.id);
       const bAssignments = assignments.filter(ass => ass.employee_id === b.id);
       
@@ -463,7 +490,7 @@ export default function DashboardPage() {
       if (aCircuit > bCircuit) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [employees, assignments]);
+  }, [employees, assignments, sortMode]);
   
   const goToPreviousWeek = () => {
     const current = new Date(selectedDate);
@@ -475,6 +502,26 @@ export default function DashboardPage() {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() + 7);
     setSelectedDate(current.toISOString().split('T')[0]);
+  };
+  
+  const goToToday = () => {
+    const today = new Date();
+    const day = today.getDay();
+    // Si c'est samedi ou dimanche, aller au lundi suivant
+    if (day === 0) today.setDate(today.getDate() + 1);
+    if (day === 6) today.setDate(today.getDate() + 2);
+    setSelectedDate(today.toISOString().split('T')[0]);
+  };
+  
+  const handleCalendarSelect = (date) => {
+    if (date) {
+      const day = date.getDay();
+      // Si fin de semaine, ajuster au jour ouvrable le plus proche
+      if (day === 0) date.setDate(date.getDate() + 1);
+      if (day === 6) date.setDate(date.getDate() + 2);
+      setSelectedDate(date.toISOString().split('T')[0]);
+      setCalendarOpen(false);
+    }
   };
   
   const handleLogout = () => {
@@ -502,6 +549,10 @@ export default function DashboardPage() {
       if (shiftType) return a.shift_types.includes(shiftType);
       return true;
     });
+  };
+  
+  const toggleSortMode = () => {
+    setSortMode(prev => prev === 'circuit' ? 'name' : 'circuit');
   };
   
   if (loading) {
@@ -571,13 +622,13 @@ export default function DashboardPage() {
         </div>
       </header>
       
-      <main className="p-4">
+      <main className="p-4" ref={containerRef}>
         {activeTab === 'schedule' && (
           <>
             {/* Controls */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={goToPreviousWeek}>
+                <Button variant="outline" size="icon" onClick={goToPreviousWeek} data-testid="prev-week-btn">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="flex gap-1">
@@ -588,30 +639,74 @@ export default function DashboardPage() {
                       size="sm"
                       onClick={() => setSelectedDate(date)}
                       className={date === selectedDate ? 'bg-[#4CAF50] hover:bg-[#43A047]' : ''}
+                      data-testid={`date-btn-${date}`}
                     >
                       {formatDate(date)}
                     </Button>
                   ))}
                 </div>
-                <Button variant="outline" size="icon" onClick={goToNextWeek}>
+                <Button variant="outline" size="icon" onClick={goToNextWeek} data-testid="next-week-btn">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
+                
+                {/* Bouton Aujourd'hui */}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={goToToday}
+                  className="ml-2"
+                  data-testid="today-btn"
+                >
+                  <CalendarDays className="h-4 w-4 mr-1" />
+                  Aujourd'hui
+                </Button>
+                
+                {/* Calendrier pour sélection de date */}
+                <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon" data-testid="calendar-picker-btn">
+                      <Calendar className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={new Date(selectedDate)}
+                      onSelect={handleCalendarSelect}
+                      disabled={(date) => date.getDay() === 0 || date.getDay() === 6}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               
               <div className="flex items-center gap-2">
+                {/* Bouton de tri */}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={toggleSortMode}
+                  className="flex items-center gap-1"
+                  data-testid="sort-toggle-btn"
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                  {sortMode === 'circuit' ? 'Tri: Circuit' : 'Tri: Nom'}
+                </Button>
+                
                 <div className="flex rounded-md border border-input overflow-hidden">
                   {['detailed', 'complete', 'abbreviated'].map((mode, idx) => (
                     <button
                       key={mode}
                       className={`px-3 py-1.5 text-sm font-medium transition-colors ${idx > 0 ? 'border-l border-input' : ''} ${viewMode === mode ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
                       onClick={() => setViewMode(mode)}
+                      data-testid={`view-mode-${mode}`}
                     >
                       {mode === 'detailed' ? 'Détaillé' : mode === 'complete' ? 'Complet' : 'Abrégé'}
                     </button>
                   ))}
                 </div>
                 
-                <Button onClick={() => setShowTempTaskModal(true)} className="bg-[#4CAF50] hover:bg-[#43A047]">
+                <Button onClick={() => setShowTempTaskModal(true)} className="bg-[#4CAF50] hover:bg-[#43A047]" data-testid="add-temp-task-btn">
                   <Plus className="h-4 w-4 mr-1" />
                   Tâche temp.
                 </Button>
@@ -628,11 +723,11 @@ export default function DashboardPage() {
                 <div style={{ width: FIXED_LEFT_WIDTH }} className="flex-shrink-0" />
                 <div 
                   ref={topScrollRef}
-                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin"
                   onScroll={handleScroll('top')}
                   style={{ minWidth: 0, height: 12 }}
                 >
-                  <div style={{ width: TOTAL_SCHEDULE_WIDTH, height: 1 }} />
+                  <div style={{ width: totalScheduleWidth, height: 1 }} />
                 </div>
                 <div style={{ width: FIXED_RIGHT_WIDTH }} className="flex-shrink-0" />
               </div>
@@ -650,16 +745,16 @@ export default function DashboardPage() {
                 
                 <div 
                   ref={headerScrollRef}
-                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none"
                   onScroll={handleScroll('header')}
                   style={{ minWidth: 0 }}
                 >
-                  <div className="relative h-9" style={{ width: TOTAL_SCHEDULE_WIDTH }}>
-                    {TIME_MARKERS.map((marker, idx) => (
+                  <div className="relative h-9" style={{ width: totalScheduleWidth }}>
+                    {timeMarkers.map((marker, idx) => (
                       <div 
                         key={marker.hour}
                         className="absolute top-0 h-full flex items-center border-l border-border/70"
-                        style={{ left: marker.position, width: idx < TIME_MARKERS.length - 1 ? PIXELS_PER_HOUR : 'auto' }}
+                        style={{ left: marker.position, width: idx < timeMarkers.length - 1 ? pixelsPerHour : 'auto' }}
                       >
                         <span className="pl-1 text-xs font-semibold">{marker.label}</span>
                       </div>
@@ -708,6 +803,7 @@ export default function DashboardPage() {
                       key={emp.id} 
                       className={`flex border-b border-border transition-colors ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : 'hover:bg-muted/30'}`}
                       style={{ height: ROW_HEIGHT }}
+                      data-testid={`schedule-row-${emp.id}`}
                     >
                       <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
                         <div 
@@ -730,12 +826,12 @@ export default function DashboardPage() {
                       </div>
                       
                       <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-                        <div className="relative h-full" style={{ width: TOTAL_SCHEDULE_WIDTH }}>
-                          {TIME_MARKERS.map((marker) => (
+                        <div className="relative h-full" style={{ width: totalScheduleWidth }}>
+                          {timeMarkers.map((marker) => (
                             <div key={marker.hour} className="absolute top-0 bottom-0 border-l border-border/40" style={{ left: marker.position }} />
                           ))}
-                          {TIME_MARKERS.slice(0, -1).map((marker) => (
-                            <div key={`half-${marker.hour}`} className="absolute top-0 bottom-0 border-l border-dashed border-border/20" style={{ left: marker.position + PIXELS_PER_HOUR / 2 }} />
+                          {timeMarkers.slice(0, -1).map((marker) => (
+                            <div key={`half-${marker.hour}`} className="absolute top-0 bottom-0 border-l border-dashed border-border/20" style={{ left: marker.position + pixelsPerHour / 2 }} />
                           ))}
                           
                           {dayAssignments.map(assignment => 
@@ -746,12 +842,19 @@ export default function DashboardPage() {
                                 assignment={assignment}
                                 viewMode={viewMode}
                                 selectedDate={selectedDate}
+                                pixelsPerHour={pixelsPerHour}
+                                totalScheduleWidth={totalScheduleWidth}
                               />
                             ))
                           )}
                           
                           {dayTasks.map(task => (
-                            <TemporaryTaskBlock key={task.id} task={task} />
+                            <TemporaryTaskBlock 
+                              key={task.id} 
+                              task={task} 
+                              pixelsPerHour={pixelsPerHour}
+                              totalScheduleWidth={totalScheduleWidth}
+                            />
                           ))}
                           
                           {isAbsent && (
@@ -796,11 +899,11 @@ export default function DashboardPage() {
                 <div style={{ width: FIXED_LEFT_WIDTH }} className="flex-shrink-0" />
                 <div 
                   ref={bottomScrollRef}
-                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin"
                   onScroll={handleScroll('bottom')}
                   style={{ minWidth: 0, height: 12 }}
                 >
-                  <div style={{ width: TOTAL_SCHEDULE_WIDTH, height: 1 }} />
+                  <div style={{ width: totalScheduleWidth, height: 1 }} />
                 </div>
                 <div style={{ width: FIXED_RIGHT_WIDTH }} className="flex-shrink-0" />
               </div>
