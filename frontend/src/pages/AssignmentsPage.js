@@ -15,7 +15,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Checkbox } from '../components/ui/checkbox';
 import { ScrollArea } from '../components/ui/scroll-area';
-import { Plus, Edit, Trash2, Search, Bus, X, Accessibility } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Bus, X, Accessibility, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -39,17 +39,18 @@ const DAYS = [
   { id: 'V', label: 'Ven' },
 ];
 
-// Périodes prédéfinies
-const PREDEFINED_PERIODS = [
-  { label: 'Année scolaire 2024-2025', start: '2024-08-26', end: '2025-06-20' },
-  { label: 'Année scolaire 2025-2026', start: '2025-08-25', end: '2026-06-19' },
-  { label: '1er semestre 2024-2025', start: '2024-08-26', end: '2025-01-17' },
-  { label: '2e semestre 2024-2025', start: '2025-01-20', end: '2025-06-20' },
+// Périodes prédéfinies par défaut
+const DEFAULT_PREDEFINED_PERIODS = [
+  { id: '1', label: 'Année scolaire 2024-2025', start: '2024-08-26', end: '2025-06-20' },
+  { id: '2', label: 'Année scolaire 2025-2026', start: '2025-08-25', end: '2026-06-19' },
+  { id: '3', label: '1er semestre 2024-2025', start: '2024-08-26', end: '2025-01-17' },
+  { id: '4', label: '2e semestre 2024-2025', start: '2025-01-20', end: '2025-06-20' },
 ];
 
 export default function AssignmentsPage({ assignments, employees, schools, onUpdate }) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showPeriodsModal, setShowPeriodsModal] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState(null);
   const [formData, setFormData] = useState({
     circuit_number: '',
@@ -57,18 +58,44 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
     start_date: new Date().toISOString().split('T')[0],
     end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     shifts: [],
-    is_adapted: false  // Case "Adapté?"
+    is_adapted: false
   });
+  
+  // Périodes prédéfinies (stockées dans localStorage)
+  const [predefinedPeriods, setPredefinedPeriods] = useState(() => {
+    const saved = localStorage.getItem('assignmentPeriods');
+    return saved ? JSON.parse(saved) : DEFAULT_PREDEFINED_PERIODS;
+  });
+  const [newPeriod, setNewPeriod] = useState({ label: '', start: '', end: '' });
 
-  // Trier les employés par ordre alphabétique pour la sélection
+  // Trier les employés par ordre alphabétique
   const sortedEmployees = useMemo(() => {
     return [...employees].sort((a, b) => a.name.localeCompare(b.name));
   }, [employees]);
 
-  const filteredAssignments = assignments.filter(a =>
-    a.circuit_number.toLowerCase().includes(search.toLowerCase()) ||
-    a.employee_name?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Trier les assignations: circuits numériques d'abord, puis Admin/Mécano à la fin
+  const sortedAssignments = useMemo(() => {
+    const filtered = assignments.filter(a =>
+      a.circuit_number.toLowerCase().includes(search.toLowerCase()) ||
+      a.employee_name?.toLowerCase().includes(search.toLowerCase())
+    );
+    
+    return filtered.sort((a, b) => {
+      const aIsAdmin = a.shifts?.some(s => s.is_admin);
+      const bIsAdmin = b.shifts?.some(s => s.is_admin);
+      
+      // Admin/Mécano toujours à la fin
+      if (aIsAdmin && !bIsAdmin) return 1;
+      if (!aIsAdmin && bIsAdmin) return -1;
+      
+      // Tri par numéro de circuit
+      const aNum = parseInt(a.circuit_number) || Infinity;
+      const bNum = parseInt(b.circuit_number) || Infinity;
+      if (aNum !== bNum) return aNum - bNum;
+      
+      return a.circuit_number.localeCompare(b.circuit_number);
+    });
+  }, [assignments, search]);
 
   const openAddModal = () => {
     setEditingAssignment(null);
@@ -102,10 +129,10 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
       id: uuidv4(),
       name: type,
       blocks: isAdmin ? [] : [],
-      is_admin: isAdmin
+      is_admin: isAdmin,
+      admin_hours: 8 // Heures fixes par défaut pour admin/mécano (modifiable)
     };
     
-    // Admin/Mécano shift gets default 6h-18h block
     if (isAdmin) {
       newShift.blocks = [{
         id: uuidv4(),
@@ -113,7 +140,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
         school_name: type === 'MECANO' ? 'Mécanique' : 'Administration',
         school_color: type === 'MECANO' ? '#795548' : '#607D8B',
         start_time: '06:00',
-        end_time: '18:00',
+        end_time: '14:00',
         hlp_before: 0,
         hlp_after: 0,
         days: ['L', 'M', 'W', 'J', 'V']
@@ -127,6 +154,15 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
     setFormData({
       ...formData,
       shifts: formData.shifts.filter(s => s.id !== shiftId)
+    });
+  };
+
+  const updateShift = (shiftId, updates) => {
+    setFormData({
+      ...formData,
+      shifts: formData.shifts.map(s =>
+        s.id === shiftId ? { ...s, ...updates } : s
+      )
     });
   };
 
@@ -202,7 +238,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
   };
 
   const calculateShiftDuration = (shift) => {
-    if (shift.is_admin) return 8 * 60; // 8h fixe pour admin/mécano
+    if (shift.is_admin) return (shift.admin_hours || 8) * 60;
     
     let total = 0;
     for (const block of shift.blocks || []) {
@@ -219,6 +255,28 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
       start_date: period.start,
       end_date: period.end
     });
+  };
+
+  // Gestion des périodes prédéfinies
+  const savePeriods = (periods) => {
+    setPredefinedPeriods(periods);
+    localStorage.setItem('assignmentPeriods', JSON.stringify(periods));
+  };
+
+  const addPredefinedPeriod = () => {
+    if (!newPeriod.label || !newPeriod.start || !newPeriod.end) {
+      toast.error('Tous les champs sont requis');
+      return;
+    }
+    const period = { ...newPeriod, id: uuidv4() };
+    savePeriods([...predefinedPeriods, period]);
+    setNewPeriod({ label: '', start: '', end: '' });
+    toast.success('Période ajoutée');
+  };
+
+  const deletePredefinedPeriod = (id) => {
+    savePeriods(predefinedPeriods.filter(p => p.id !== id));
+    toast.success('Période supprimée');
   };
 
   const handleSubmit = async (e) => {
@@ -274,6 +332,14 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                 className="pl-9 w-64"
               />
             </div>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowPeriodsModal(true)}
+              data-testid="manage-periods-btn"
+            >
+              <Settings2 className="h-4 w-4 mr-1" />
+              Périodes
+            </Button>
             <Button onClick={openAddModal} className="bg-[#4CAF50] hover:bg-[#43A047]">
               <Plus className="h-4 w-4 mr-1" />
               Créer assignation
@@ -283,7 +349,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
         <CardContent>
           <ScrollArea className="h-[calc(100vh-280px)]">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredAssignments.map((assignment) => (
+              {sortedAssignments.map((assignment) => (
                 <Card key={assignment.id} className="overflow-hidden">
                   <CardHeader className="pb-2 bg-muted/50">
                     <div className="flex items-center justify-between">
@@ -324,7 +390,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                               variant={shift.is_admin ? 'default' : 'secondary'} 
                               className={shift.is_admin ? (shift.name === 'MECANO' ? 'bg-amber-700' : 'bg-blue-600') : ''}
                             >
-                              {shift.name} ({shift.is_admin ? '8:00' : formatHoursMinutes(calculateShiftDuration(shift))})
+                              {shift.name} ({shift.is_admin ? `${shift.admin_hours || 8}:00` : formatHoursMinutes(calculateShiftDuration(shift))})
                             </Badge>
                           ))}
                           {(!assignment.shifts || assignment.shifts.length === 0) && (
@@ -336,7 +402,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                   </CardContent>
                 </Card>
               ))}
-              {filteredAssignments.length === 0 && (
+              {sortedAssignments.length === 0 && (
                 <div className="col-span-full text-center text-muted-foreground py-8">
                   {search ? 'Aucun résultat' : 'Aucune assignation'}
                 </div>
@@ -355,31 +421,30 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Case Adapté en haut */}
+            <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+              <Checkbox
+                id="is_adapted"
+                checked={formData.is_adapted}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_adapted: checked })}
+              />
+              <Label htmlFor="is_adapted" className="cursor-pointer flex items-center gap-2">
+                <Accessibility className="h-5 w-5 text-blue-600" />
+                <span className="font-medium">Circuit adapté (transport pour personnes handicapées)</span>
+              </Label>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Numéro de circuit *</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={formData.circuit_number}
-                    onChange={(e) => setFormData({ ...formData, circuit_number: e.target.value })}
-                    placeholder="Ex: 204"
-                    className="flex-1"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="is_adapted"
-                      checked={formData.is_adapted}
-                      onCheckedChange={(checked) => setFormData({ ...formData, is_adapted: checked })}
-                    />
-                    <Label htmlFor="is_adapted" className="text-sm cursor-pointer flex items-center gap-1">
-                      <Accessibility className="h-4 w-4" />
-                      Adapté?
-                    </Label>
-                  </div>
-                </div>
+                <Input
+                  value={formData.circuit_number}
+                  onChange={(e) => setFormData({ ...formData, circuit_number: e.target.value })}
+                  placeholder="Ex: 204"
+                />
               </div>
               <div className="space-y-2">
-                <Label>Conducteur (trié alphabétiquement)</Label>
+                <Label>Conducteur</Label>
                 <Select
                   value={formData.employee_id || "unassigned"}
                   onValueChange={(v) => setFormData({ ...formData, employee_id: v === "unassigned" ? "" : v })}
@@ -401,9 +466,9 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
             <div className="space-y-2">
               <Label>Période d'assignation</Label>
               <div className="flex flex-wrap gap-2 mb-2">
-                {PREDEFINED_PERIODS.map((period) => (
+                {predefinedPeriods.map((period) => (
                   <Button
-                    key={period.label}
+                    key={period.id}
                     type="button"
                     variant="outline"
                     size="sm"
@@ -445,14 +510,24 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                     <div className="flex items-center gap-2">
                       <Badge className={shift.is_admin ? (shift.name === 'MECANO' ? 'bg-amber-700' : 'bg-blue-600') : ''}>{shift.name}</Badge>
                       {shift.is_admin && (
-                        <span className={`text-xs ${shift.name === 'MECANO' ? 'text-amber-700' : 'text-blue-600'}`}>
-                          (8h/jour fixe - Non impacté par jours fériés)
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Heures/jour:</span>
+                          <Input
+                            type="number"
+                            value={shift.admin_hours || 8}
+                            onChange={(e) => updateShift(shift.id, { admin_hours: parseFloat(e.target.value) || 8 })}
+                            className="w-16 h-7 text-xs"
+                            min="1"
+                            max="12"
+                            step="0.5"
+                          />
+                          <span className="text-xs text-muted-foreground">(Non impacté par fériés/congés)</span>
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">
-                        {shift.is_admin ? '08:00' : formatHoursMinutes(calculateShiftDuration(shift))}
+                        {shift.is_admin ? `${shift.admin_hours || 8}:00` : formatHoursMinutes(calculateShiftDuration(shift))}
                       </span>
                       <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeShift(shift.id)}>
                         <X className="h-4 w-4" />
@@ -466,7 +541,6 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                       {shift.blocks.map(block => (
                         <div key={block.id} className="p-2 bg-muted/50 rounded space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            {/* School select */}
                             <Select value={block.school_id || "none"} onValueChange={(v) => handleSchoolSelect(shift.id, block.id, v === "none" ? "" : v)}>
                               <SelectTrigger className="w-36">
                                 <SelectValue placeholder="École" />
@@ -484,7 +558,6 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                               </SelectContent>
                             </Select>
 
-                            {/* HLP Before */}
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-muted-foreground">HLP</span>
                               <Input
@@ -497,7 +570,6 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                               />
                             </div>
 
-                            {/* Start time */}
                             <Select value={block.start_time} onValueChange={(v) => updateBlock(shift.id, block.id, { start_time: v })}>
                               <SelectTrigger className="w-20 h-8">
                                 <SelectValue />
@@ -509,7 +581,6 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
 
                             <span className="text-muted-foreground">→</span>
 
-                            {/* End time */}
                             <Select value={block.end_time} onValueChange={(v) => updateBlock(shift.id, block.id, { end_time: v })}>
                               <SelectTrigger className="w-20 h-8">
                                 <SelectValue />
@@ -519,7 +590,6 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                               </SelectContent>
                             </Select>
 
-                            {/* HLP After */}
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-muted-foreground">HLP</span>
                               <Input
@@ -537,7 +607,6 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
                             </Button>
                           </div>
 
-                          {/* Days selection */}
                           <div className="flex items-center gap-1">
                             <span className="text-xs text-muted-foreground mr-1">Jours:</span>
                             {DAYS.map(day => (
@@ -568,7 +637,7 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
 
               {formData.shifts.length === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  Ajoutez des quarts de travail (AM, MIDI, PM) ou des quarts Admin/Mécano
+                  Ajoutez des quarts de travail
                 </p>
               )}
             </div>
@@ -580,6 +649,73 @@ export default function AssignmentsPage({ assignments, employees, schools, onUpd
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Periods Management Modal */}
+      <Dialog open={showPeriodsModal} onOpenChange={setShowPeriodsModal}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Gérer les périodes d'assignation</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Add new period */}
+            <div className="space-y-3 p-3 border rounded-lg">
+              <Label className="font-medium">Ajouter une période</Label>
+              <Input
+                placeholder="Nom de la période (ex: Année scolaire 2026-2027)"
+                value={newPeriod.label}
+                onChange={(e) => setNewPeriod({ ...newPeriod, label: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Date de début</Label>
+                  <Input
+                    type="date"
+                    value={newPeriod.start}
+                    onChange={(e) => setNewPeriod({ ...newPeriod, start: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Date de fin</Label>
+                  <Input
+                    type="date"
+                    value={newPeriod.end}
+                    onChange={(e) => setNewPeriod({ ...newPeriod, end: e.target.value })}
+                  />
+                </div>
+              </div>
+              <Button onClick={addPredefinedPeriod} className="w-full">
+                <Plus className="h-4 w-4 mr-1" />
+                Ajouter
+              </Button>
+            </div>
+
+            {/* Existing periods */}
+            <div className="space-y-2">
+              <Label className="font-medium">Périodes existantes</Label>
+              <ScrollArea className="h-48">
+                {predefinedPeriods.map((period) => (
+                  <div key={period.id} className="flex items-center justify-between p-2 bg-muted/50 rounded mb-2">
+                    <div>
+                      <div className="font-medium text-sm">{period.label}</div>
+                      <div className="text-xs text-muted-foreground">{period.start} → {period.end}</div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deletePredefinedPeriod(period.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </ScrollArea>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPeriodsModal(false)}>
+              Fermer
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
