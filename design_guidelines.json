@@ -1,0 +1,146 @@
+{
+  "brand_identity": {
+    "name": "Les Berlines Trip à Bord - Scheduler",
+    "persona": "The Air Traffic Controller",
+    "emotional_tone": "Reliable, Organized, Efficient, Calm",
+    "design_principles": [
+      "Fusion: Logistics Precision + Swiss Grid Clarity",
+      "Zoom In: Critical alerts (>39h) must pop instantly",
+      "Negative Space: Dense data needs breathing room in headers/footers",
+      "Contrast: High contrast for readability in sunlight or low light"
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Manrope, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "usage_rules": {
+      "headings": "Use Manrope for all page titles and modal headers. Weight: 600 or 700.",
+      "data_grid": "Use Inter with 'tnum' (tabular nums) feature setting for all time and hours data.",
+      "alerts": "Use Manrope Bold for alert badges."
+    }
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "DEFAULT": "#4CAF50",
+        "foreground": "#FFFFFF",
+        "hover": "#43A047",
+        "active": "#388E3C"
+      },
+      "secondary": {
+        "DEFAULT": "#263238",
+        "foreground": "#FFFFFF"
+      },
+      "background": {
+        "light": "#F8FAF9",
+        "dark": "#121212"
+      },
+      "surface": {
+        "light": "#FFFFFF",
+        "dark": "#1E1E1E"
+      },
+      "alerts": {
+        "error": "#EF4444",
+        "warning": "#F59E0B",
+        "success": "#10B981"
+      },
+      "grid": {
+        "line_light": "#E2E8F0",
+        "line_dark": "#2D3748",
+        "header_light": "#F1F5F9",
+        "header_dark": "#1A202C"
+      }
+    },
+    "semantic_mapping": {
+      "overtime_alert": "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800",
+      "undertime_alert": "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800",
+      "school_block": "Use distinct pastel colors with dark text for light mode, and saturated colors with white text for dark mode."
+    }
+  },
+  "layout_strategies": {
+    "dashboard_grid": {
+      "type": "Bento Grid",
+      "columns": "grid-cols-1 md:grid-cols-4 lg:grid-cols-12",
+      "gap": "gap-6",
+      "rules": "Use 'Control Room' density. Summary cards span 2-3 cols. Main chart spans 6-8 cols."
+    },
+    "scheduler_grid": {
+      "type": "Fixed Column Table",
+      "structure": [
+        "Sticky Header (Replacements Section) - z-index 40",
+        "Sticky Left Column (Driver Names) - z-index 30",
+        "Scrollable Main Area (Time Blocks) - z-index 10"
+      ],
+      "interaction": "Horizontal scroll for time, Vertical scroll for drivers. Sync scroll positions."
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#4CAF50] hover:bg-[#43A047] text-white rounded-md shadow-sm font-medium transition-all active:scale-95",
+      "secondary": "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200",
+      "ghost": "hover:bg-gray-100 text-gray-600 dark:hover:bg-gray-800 dark:text-gray-400"
+    },
+    "cards": {
+      "style": "bg-white dark:bg-[#1E1E1E] border border-gray-100 dark:border-gray-800 shadow-sm rounded-lg",
+      "hover": "hover:shadow-md transition-shadow duration-200"
+    },
+    "inputs": {
+      "style": "h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4CAF50] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    },
+    "modals": {
+      "overlay": "bg-black/40 backdrop-blur-sm",
+      "content": "bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 shadow-2xl sm:rounded-lg"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "Use 'backdrop-blur-md bg-white/80 dark:bg-black/80' for sticky headers to maintain context while scrolling.",
+    "shadows": "Use 'shadow-sm' for grid items, 'shadow-lg' for dragged items (lift effect).",
+    "borders": "Use subtle 1px borders. Avoid heavy grid lines. Let whitespace define rows."
+  },
+  "assets": {
+    "logo": {
+      "url": "https://customer-assets.emergentagent.com/job_route-manager-27/artifacts/sd598o43_LogoBerlinesTAB.png",
+      "alt": "Les Berlines Trip à Bord Logo"
+    },
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1620841946140-f6b5e40ce49a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3MjQyMTd8MHwxfHNlYXJjaHwxfHxzY2hvb2wlMjBidXMlMjBtaW5pbWFsaXN0JTIwYWJzdHJhY3R8ZW58MHx8fHwxNzY4MDkyNzEwfDA&ixlib=rb-4.1.0&q=85",
+      "style": "overlay-black-60"
+    },
+    "icons": "Use 'lucide-react' for all UI icons. Use 'Bus', 'Calendar', 'Users', 'AlertTriangle', 'Clock' icons."
+  },
+  "accessibility": {
+    "contrast": "Ensure text on colored blocks (schools) meets WCAG AA (4.5:1). Use dark text on pastel blocks, white text on dark blocks.",
+    "focus_states": "Visible focus ring with color #4CAF50 on all interactive elements.",
+    "reduced_motion": "Disable drag animations if prefers-reduced-motion is true."
+  },
+  "instructions_to_main_agent": {
+    "general": "You are building a high-density data application. Performance and clarity are paramount. Do not over-animate the grid.",
+    "grid_implementation": "Use CSS Grid or Flexbox for the scheduler. Avoid HTML tables if possible for better drag-and-drop control, or use a specialized library if needed (but prefer custom CSS Grid for full control).",
+    "state_management": "The scheduler state is complex. Ensure updates to 'hours worked' are instant and reflected in the alert badges immediately.",
+    "theme": "Implement a 'ThemeProvider' wrapping the app. Default to 'light'. Persist preference in localStorage.",
+    "testing": "Add 'data-testid' to every cell, driver row, and action button. Format: 'driver-row-{id}', 'time-block-{id}'."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy",
+    "Use glass-morphism effects with backdrop filters (12-24px blur)",
+    "You MUST NOT apply universal transition. Eg: transition: all. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file. This disrupts the human natural reading flow of text",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯📚🎭🎬🎪🎉🎊🎁🎀🎂🍰🎈🎨🎰💰💵💳🏦💎🪙💸🤑📊📈📉💹🔢🏆🥇 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN",
+    "Prioritize using pre-existing components from src/components/ui when applicable",
+    "Create new components that match the style and conventions of existing components when needed",
+    "Examine existing components to understand the project's component patterns before creating new ones",
+    "Components MUST use named exports (export const ComponentName = ...)",
+    "Pages MUST use default exports (export default function PageName() {...})",
+    "Use sonner for toasts. Sonner component are located in /app/src/components/ui/sonner.tsx"
+  ]
+}
