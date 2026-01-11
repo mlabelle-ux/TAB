@@ -344,11 +344,22 @@ export default function DashboardPage() {
   // Ref for synchronized scrolling
   const scrollContainerRef = useRef(null);
   const headerScrollRef = useRef(null);
+  const rowScrollRefs = useRef([]);
   
   const handleScheduleScroll = (e) => {
+    const scrollLeft = e.target.scrollLeft;
+    
+    // Sync header
     if (headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = e.target.scrollLeft;
+      headerScrollRef.current.scrollLeft = scrollLeft;
     }
+    
+    // Sync all rows
+    rowScrollRefs.current.forEach(ref => {
+      if (ref && ref !== e.target) {
+        ref.scrollLeft = scrollLeft;
+      }
+    });
   };
   
   const fetchData = useCallback(async () => {
