@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   getSchedule, getEmployees, getSchools, getAssignments, 
   getTemporaryTasks, getAbsences, getHolidays,
-  createTemporaryReassignment
+  createTemporaryReassignment, deleteTemporaryTask
 } from '../lib/api';
 import { 
   formatHoursMinutes, getWeekDates, getMonday, timeToMinutes, 
