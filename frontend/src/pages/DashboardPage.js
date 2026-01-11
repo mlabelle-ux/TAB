@@ -48,8 +48,8 @@ const SCHEDULE_START_HOUR = 5;
 const SCHEDULE_END_HOUR = 19; // 19h00 = 18h59 max
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR; // 14 heures
 
-// Dynamic pixel calculation - will be calculated based on available space
-const MIN_PIXELS_PER_HOUR = 60;
+// Default pixels per hour (will be recalculated dynamically)
+const DEFAULT_PIXELS_PER_HOUR = 80;
 
 // Column widths - Conducteur élargi
 const DRIVER_COL_WIDTH = 200;
@@ -62,20 +62,18 @@ const FIXED_RIGHT_WIDTH = DAY_HOURS_COL_WIDTH + WEEK_HOURS_COL_WIDTH;
 // Row height - réduite d'un tiers
 const ROW_HEIGHT = 36;
 
-// Generate time markers
-const generateTimeMarkers = () => {
+// Generate time markers dynamically
+const generateTimeMarkers = (pixelsPerHour) => {
   const markers = [];
-  for (let h = SCHEDULE_START_HOUR; h <= SCHEDULE_END_HOUR; h++) {
+  for (let h = SCHEDULE_START_HOUR; h < SCHEDULE_END_HOUR; h++) {
     markers.push({ 
       hour: h, 
       label: `${h}h00`, 
-      position: (h - SCHEDULE_START_HOUR) * PIXELS_PER_HOUR 
+      position: (h - SCHEDULE_START_HOUR) * pixelsPerHour 
     });
   }
   return markers;
 };
-
-const TIME_MARKERS = generateTimeMarkers();
 
 // Block with tooltip
 const ScheduleBlock = ({ block, viewMode, showHlpInColor = false }) => {
