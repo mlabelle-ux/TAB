@@ -742,7 +742,8 @@ async def generate_hours_report(
     employee_ids: str = "",
     sort_by: str = "name"  # name, matricule, hire_date
 ):
-    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import LongTable
     
     employees = await db.employees.find({}, {"_id": 0}).to_list(200)
     assignments = await db.assignments.find({}, {"_id": 0}).to_list(500)
@@ -774,15 +775,11 @@ async def generate_hours_report(
             date_range.append(current.strftime('%Y-%m-%d'))
         current += timedelta(days=1)
     
-    # Determine page orientation based on number of days
-    num_days = len(date_range)
-    if num_days > 7:
-        page_size = landscape(letter)
-    else:
-        page_size = letter
+    # Always use portrait orientation
+    page_size = letter
     
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=page_size, leftMargin=20, rightMargin=20, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buffer, pagesize=page_size, leftMargin=15, rightMargin=15, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
     
@@ -800,8 +797,8 @@ async def generate_hours_report(
     # Format date headers (shorter format)
     def format_date_header(d):
         dt = datetime.strptime(d, '%Y-%m-%d')
-        days_fr = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-        return f"{days_fr[dt.weekday()]}\n{dt.day}/{dt.month}"
+        days_fr = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+        return f"{days_fr[dt.weekday()]}\n{dt.day}"
     
     # Build headers: Matricule, Nom, [dates...], Total
     headers = ["Mat.", "Employé"] + [format_date_header(d) for d in date_range] + ["TOTAL"]
@@ -813,7 +810,7 @@ async def generate_hours_report(
         emp_temp_tasks = [t for t in temp_tasks if t.get('employee_id') == emp_id]
         emp_absences = [a for a in absences if a.get('employee_id') == emp_id]
         
-        row = [emp.get('matricule', '-')[:6], emp['name'][:20]]
+        row = [emp.get('matricule', '-')[:6], emp['name'][:18]]
         total_minutes = 0
         
         for date_str in date_range:
@@ -841,32 +838,40 @@ async def generate_hours_report(
         row.append(format_hours_minutes(total_minutes))
         table_data.append(row)
     
-    # Calculate column widths
-    mat_width = 35
-    name_width = 90
-    day_width = 38
-    total_width = 45
-    col_widths = [mat_width, name_width] + [day_width] * len(date_range) + [total_width]
+    # Calculate column widths based on number of days
+    num_days = len(date_range)
+    page_width = letter[0] - 30  # Account for margins
+    mat_width = 32
+    name_width = 80
+    total_width = 40
     
-    table = Table(table_data, colWidths=col_widths)
+    # Calculate day column width to fit all columns
+    available_for_days = page_width - mat_width - name_width - total_width
+    day_width = max(22, available_for_days / max(1, num_days))
+    
+    col_widths = [mat_width, name_width] + [day_width] * num_days + [total_width]
+    
+    # Use LongTable for headers on each page
+    table = LongTable(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4CAF50')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (1, 1), (1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 7),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('FONTSIZE', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
         ('BACKGROUND', (0, 1), (-1, -1), colors.white),
         ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
         # Highlight total column
         ('BACKGROUND', (-1, 0), (-1, 0), colors.HexColor('#388E3C')),
         ('FONTNAME', (-1, 1), (-1, -1), 'Helvetica-Bold'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     elements.append(table)
     
