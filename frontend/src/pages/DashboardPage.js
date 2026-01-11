@@ -21,7 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
-  Bus, UserX
+  Bus, UserX, Info
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -38,8 +38,7 @@ const LOGO_URL = 'https://customer-assets.emergentagent.com/job_route-manager-27
 // Time configuration
 const SCHEDULE_START_HOUR = 5;
 const SCHEDULE_END_HOUR = 20;
-const DEFAULT_VIEW_START = 6.5;
-const PIXELS_PER_HOUR = 80;
+const PIXELS_PER_HOUR = 100; // Increased for better visibility
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR;
 const TOTAL_SCHEDULE_WIDTH = TOTAL_HOURS * PIXELS_PER_HOUR;
 
@@ -55,7 +54,11 @@ const FIXED_RIGHT_WIDTH = DAY_HOURS_COL_WIDTH + WEEK_HOURS_COL_WIDTH;
 const generateTimeMarkers = () => {
   const markers = [];
   for (let h = SCHEDULE_START_HOUR; h <= SCHEDULE_END_HOUR; h++) {
-    markers.push({ hour: h, label: `${h}h00`, position: (h - SCHEDULE_START_HOUR) * PIXELS_PER_HOUR });
+    markers.push({ 
+      hour: h, 
+      label: `${h}h00`, 
+      position: (h - SCHEDULE_START_HOUR) * PIXELS_PER_HOUR 
+    });
   }
   return markers;
 };
@@ -199,105 +202,113 @@ const TemporaryTaskBlock = ({ task }) => {
   );
 };
 
-// Section Remplacements - STICKY en haut sous les contrôles
+// Section Remplacements - TOUJOURS VISIBLE
 const ReplacementsSection = ({ replacements, onAssign, selectedDate }) => {
   const { unassigned_assignments = [], unassigned_tasks = [], absent_items = [] } = replacements || {};
   
-  // Filter absent items for selected date
   const todayAbsentItems = absent_items.filter(item => item.date === selectedDate);
-  
   const totalReplacements = unassigned_assignments.length + unassigned_tasks.length + todayAbsentItems.length;
-  
-  if (totalReplacements === 0) return null;
   
   return (
     <div 
-      className="sticky top-0 z-20 mb-4 p-4 rounded-lg border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/50 dark:border-amber-700 shadow-md"
+      className={`mb-4 p-4 rounded-lg border-2 shadow-sm ${
+        totalReplacements > 0 
+          ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/50 dark:border-amber-700' 
+          : 'border-green-300 bg-green-50 dark:bg-green-950/50 dark:border-green-700'
+      }`}
       data-testid="replacements-section"
     >
-      <div className="flex items-center gap-3 mb-3">
-        <div className="p-2 rounded-full bg-amber-200 dark:bg-amber-800">
-          <AlertTriangle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`p-2 rounded-full ${totalReplacements > 0 ? 'bg-amber-200 dark:bg-amber-800' : 'bg-green-200 dark:bg-green-800'}`}>
+          {totalReplacements > 0 ? (
+            <AlertTriangle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+          ) : (
+            <Info className="h-5 w-5 text-green-700 dark:text-green-300" />
+          )}
         </div>
         <div>
-          <h3 className="font-bold text-amber-900 dark:text-amber-100">Remplacements requis</h3>
-          <p className="text-xs text-amber-700 dark:text-amber-400">
-            {totalReplacements} élément(s) à assigner pour {formatDate(selectedDate)}
+          <h3 className={`font-bold ${totalReplacements > 0 ? 'text-amber-900 dark:text-amber-100' : 'text-green-900 dark:text-green-100'}`}>
+            {totalReplacements > 0 ? 'Remplacements requis' : 'Remplacements'}
+          </h3>
+          <p className={`text-xs ${totalReplacements > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
+            {totalReplacements > 0 
+              ? `${totalReplacements} élément(s) à assigner pour ${formatDate(selectedDate)}`
+              : `Aucun remplacement requis pour ${formatDate(selectedDate)}`
+            }
           </p>
         </div>
-        <Badge className="ml-auto bg-amber-500 text-white text-lg px-3">
-          {totalReplacements}
-        </Badge>
+        {totalReplacements > 0 && (
+          <Badge className="ml-auto bg-amber-500 text-white text-lg px-3">
+            {totalReplacements}
+          </Badge>
+        )}
       </div>
       
-      <div className="space-y-2">
-        {/* Assignations non assignées */}
-        {unassigned_assignments.length > 0 && (
-          <div>
-            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
-              Circuits sans conducteur:
-            </span>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {unassigned_assignments.map(a => (
-                <Badge 
-                  key={a.id} 
-                  variant="outline" 
-                  className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200"
-                  onClick={() => onAssign(a, 'assignment')}
-                  data-testid={`replacement-${a.id}`}
-                >
-                  <Bus className="h-3 w-3 mr-1" />
-                  Circuit {a.circuit_number}
-                </Badge>
-              ))}
+      {totalReplacements > 0 && (
+        <div className="space-y-2 mt-3">
+          {unassigned_assignments.length > 0 && (
+            <div>
+              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
+                Circuits sans conducteur:
+              </span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {unassigned_assignments.map(a => (
+                  <Badge 
+                    key={a.id} 
+                    variant="outline" 
+                    className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200"
+                    onClick={() => onAssign(a, 'assignment')}
+                  >
+                    <Bus className="h-3 w-3 mr-1" />
+                    Circuit {a.circuit_number}
+                  </Badge>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-        
-        {/* Tâches temporaires non assignées */}
-        {unassigned_tasks.length > 0 && (
-          <div>
-            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
-              Tâches sans conducteur:
-            </span>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {unassigned_tasks.map(t => (
-                <Badge 
-                  key={t.id} 
-                  variant="outline" 
-                  className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-dashed border-amber-400 text-amber-800 dark:text-amber-200"
-                  onClick={() => onAssign(t, 'task')}
-                  data-testid={`replacement-task-${t.id}`}
-                >
-                  {t.name} ({t.start_time}-{t.end_time})
-                </Badge>
-              ))}
+          )}
+          
+          {unassigned_tasks.length > 0 && (
+            <div>
+              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
+                Tâches sans conducteur:
+              </span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {unassigned_tasks.map(t => (
+                  <Badge 
+                    key={t.id} 
+                    variant="outline" 
+                    className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-dashed border-amber-400 text-amber-800 dark:text-amber-200"
+                    onClick={() => onAssign(t, 'task')}
+                  >
+                    {t.name} ({t.start_time}-{t.end_time})
+                  </Badge>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-        
-        {/* Éléments d'employés absents */}
-        {todayAbsentItems.length > 0 && (
-          <div>
-            <span className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase">
-              Absences à remplacer:
-            </span>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {todayAbsentItems.map((item, idx) => (
-                <Badge 
-                  key={`absent-${idx}`} 
-                  variant="outline" 
-                  className="cursor-pointer bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 border-red-400 text-red-800 dark:text-red-200"
-                  onClick={() => onAssign(item.data, 'assignment')}
-                >
-                  <UserX className="h-3 w-3 mr-1" />
-                  {item.data.circuit_number} ({item.original_employee})
-                </Badge>
-              ))}
+          )}
+          
+          {todayAbsentItems.length > 0 && (
+            <div>
+              <span className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase">
+                Absences à remplacer:
+              </span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {todayAbsentItems.map((item, idx) => (
+                  <Badge 
+                    key={`absent-${idx}`} 
+                    variant="outline" 
+                    className="cursor-pointer bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 border-red-400 text-red-800 dark:text-red-200"
+                    onClick={() => onAssign(item.data, 'assignment')}
+                  >
+                    <UserX className="h-3 w-3 mr-1" />
+                    {item.data.circuit_number} ({item.original_employee})
+                  </Badge>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -329,16 +340,15 @@ export default function DashboardPage() {
   
   const [loading, setLoading] = useState(true);
   const [showTempTaskModal, setShowTempTaskModal] = useState(false);
-  const [scrollLeft, setScrollLeft] = useState(0);
   
-  // Set default scroll position on mount
-  useEffect(() => {
-    const defaultScrollLeft = (DEFAULT_VIEW_START - SCHEDULE_START_HOUR) * PIXELS_PER_HOUR;
-    setScrollLeft(defaultScrollLeft);
-  }, []);
+  // Ref for synchronized scrolling
+  const scrollContainerRef = useRef(null);
+  const headerScrollRef = useRef(null);
   
   const handleScheduleScroll = (e) => {
-    setScrollLeft(e.target.scrollLeft);
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = e.target.scrollLeft;
+    }
   };
   
   const fetchData = useCallback(async () => {
@@ -402,7 +412,6 @@ export default function DashboardPage() {
     toast.success('Tâche temporaire créée');
   };
   
-  // Check if employee is absent on selected date
   const isEmployeeAbsent = (employeeId) => {
     return absences.some(a => 
       a.employee_id === employeeId &&
@@ -552,7 +561,7 @@ export default function DashboardPage() {
               </div>
             </div>
             
-            {/* Section Remplacements - STICKY */}
+            {/* Section Remplacements - TOUJOURS VISIBLE */}
             <ReplacementsSection 
               replacements={replacements} 
               onAssign={handleAssign}
@@ -561,8 +570,9 @@ export default function DashboardPage() {
             
             {/* Schedule Grid */}
             <div className="border border-border rounded-lg overflow-hidden bg-card">
-              {/* Fixed Header Row */}
-              <div className="flex border-b-2 border-border bg-muted/70 sticky top-0 z-10">
+              {/* Header Row with Time */}
+              <div className="flex border-b-2 border-border bg-muted/70">
+                {/* Fixed Left Header */}
                 <div className="flex-shrink-0 flex bg-muted/70" style={{ width: FIXED_LEFT_WIDTH }}>
                   <div 
                     className="font-semibold text-sm px-3 py-2.5 border-r border-border flex items-center"
@@ -578,21 +588,26 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 
-                <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+                {/* Scrollable Time Header - Synchronized with body */}
+                <div 
+                  ref={headerScrollRef}
+                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  style={{ minWidth: 0 }}
+                >
                   <div 
-                    className="relative h-10"
-                    style={{ 
-                      width: TOTAL_SCHEDULE_WIDTH,
-                      transform: `translateX(-${scrollLeft}px)`
-                    }}
+                    className="relative h-10 bg-muted/70"
+                    style={{ width: TOTAL_SCHEDULE_WIDTH }}
                   >
-                    {TIME_MARKERS.map((marker) => (
+                    {TIME_MARKERS.map((marker, idx) => (
                       <div 
                         key={marker.hour}
-                        className="absolute top-0 h-full flex items-center border-l border-border"
-                        style={{ left: marker.position }}
+                        className="absolute top-0 h-full flex items-center justify-start border-l border-border/70"
+                        style={{ 
+                          left: marker.position,
+                          width: idx < TIME_MARKERS.length - 1 ? PIXELS_PER_HOUR : 'auto'
+                        }}
                       >
-                        <span className="px-2 text-xs font-semibold text-foreground whitespace-nowrap">
+                        <span className="pl-1 text-xs font-semibold text-foreground whitespace-nowrap">
                           {marker.label}
                         </span>
                       </div>
@@ -600,6 +615,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 
+                {/* Fixed Right Header */}
                 <div className="flex-shrink-0 flex bg-muted/70" style={{ width: FIXED_RIGHT_WIDTH }}>
                   <div 
                     className="font-semibold text-sm px-2 py-2.5 border-l-2 border-border flex items-center justify-center"
@@ -617,8 +633,8 @@ export default function DashboardPage() {
               </div>
               
               {/* Scrollable Body */}
-              <div className="max-h-[calc(100vh-400px)] overflow-y-auto">
-                {employees.map(emp => {
+              <div className="max-h-[calc(100vh-420px)] overflow-y-auto">
+                {employees.map((emp, empIdx) => {
                   const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
                   const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
                   const weeklyMinutes = empSchedule?.weekly_total || 0;
@@ -644,6 +660,7 @@ export default function DashboardPage() {
                       className={`flex border-b border-border transition-colors ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : 'hover:bg-muted/30'}`}
                       data-testid={`driver-row-${emp.id}`}
                     >
+                      {/* Fixed Left Columns */}
                       <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
                         <div 
                           className={`px-3 py-2 border-r border-border flex items-center gap-2 ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
@@ -668,23 +685,27 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       
+                      {/* Scrollable Schedule Area */}
                       <div 
-                        className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin"
+                        ref={empIdx === 0 ? scrollContainerRef : null}
+                        className="flex-1 overflow-x-auto overflow-y-hidden"
                         style={{ minWidth: 0 }}
-                        onScroll={handleScheduleScroll}
+                        onScroll={empIdx === 0 ? handleScheduleScroll : undefined}
                       >
                         <div 
                           className="relative min-h-[52px]"
                           style={{ width: TOTAL_SCHEDULE_WIDTH }}
                         >
+                          {/* Hour grid lines - aligned with headers */}
                           {TIME_MARKERS.map((marker) => (
                             <div
                               key={marker.hour}
-                              className="absolute top-0 bottom-0 border-l border-border/60"
+                              className="absolute top-0 bottom-0 border-l border-border/50"
                               style={{ left: marker.position }}
                             />
                           ))}
                           
+                          {/* Half-hour markers */}
                           {TIME_MARKERS.slice(0, -1).map((marker) => (
                             <div
                               key={`half-${marker.hour}`}
@@ -693,6 +714,7 @@ export default function DashboardPage() {
                             />
                           ))}
                           
+                          {/* Assignments */}
                           {dayAssignments.map(assignment => 
                             assignment.shifts?.map(shift => (
                               <ShiftBlock
@@ -704,6 +726,7 @@ export default function DashboardPage() {
                             ))
                           )}
                           
+                          {/* Temporary tasks */}
                           {dayTasks.map(task => (
                             <TemporaryTaskBlock key={task.id} task={task} />
                           ))}
@@ -718,6 +741,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       
+                      {/* Fixed Right Columns */}
                       <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_RIGHT_WIDTH }}>
                         <div 
                           className={`px-2 py-2 border-l-2 border-border flex items-center justify-center tabular-nums text-sm ${isAbsent ? 'bg-red-50 dark:bg-red-950/30 text-muted-foreground' : ''}`}
