@@ -872,12 +872,24 @@ export default function DashboardPage() {
               <span className="truncate">{label}</span>
             </div>
           </TooltipTrigger>
-          <TooltipContent side="top">
-            <div className="text-xs space-y-1">
+          <TooltipContent side="top" className="p-0">
+            <div className="text-xs p-2 space-y-1">
               {item.type === 'unassigned_task' ? (
                 <>
                   <div className="font-bold">Tâche: {item.task.name}</div>
                   <div>Horaire: {item.startTime} - {item.endTime}</div>
+                  <div>Date: {item.task.date}</div>
+                  {item.task.school_name && <div>École: {item.task.school_name}</div>}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteTask(item.task.id, item.task.name);
+                    }}
+                    className="w-full mt-2 px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs flex items-center justify-center gap-1"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Supprimer
+                  </button>
                 </>
               ) : (
                 <>
@@ -888,7 +900,7 @@ export default function DashboardPage() {
                   {item.type === 'temp_unassigned_block' && <div className="text-purple-400">Déplacé temporairement</div>}
                 </>
               )}
-              <div className="text-muted-foreground">Glissez vers un conducteur pour assigner</div>
+              <div className="text-muted-foreground text-[10px] mt-1">Glissez vers un conducteur pour assigner</div>
             </div>
           </TooltipContent>
         </Tooltip>
