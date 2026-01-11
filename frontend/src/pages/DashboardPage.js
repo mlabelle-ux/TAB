@@ -562,19 +562,6 @@ export default function DashboardPage() {
       toast.error('Erreur lors de la réassignation');
     }
   };
-        date: selectedDate,
-        assignment_id: assignment.id,
-        shift_id: shiftId,
-        block_id: blockId,
-        original_employee_id: originalEmployeeId,
-        new_employee_id: targetEmployeeId
-      });
-      toast.success(`Circuit ${assignment.circuit_number} assigné à ${targetEmployee.name} pour le ${selectedDate}`);
-      fetchData();
-    } catch (error) {
-      toast.error('Erreur lors de la réassignation');
-    }
-  };
   
   const handleTempTaskCreated = () => {
     setShowTempTaskModal(false);
