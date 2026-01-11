@@ -23,15 +23,22 @@ import {
 } from '../components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Calendar as CalendarComponent } from '../components/ui/calendar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Label } from '../components/ui/label';
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
   Bus, UserX, Info, CalendarDays, ArrowUpDown, Accessibility, GripVertical
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from '@dnd-kit/core';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable
+} from '@dnd-kit/core';
 
 import EmployeesPage from './EmployeesPage';
 import SchoolsPage from './SchoolsPage';
@@ -43,19 +50,17 @@ import TemporaryTaskModal from '../components/TemporaryTaskModal';
 
 const LOGO_URL = 'https://customer-assets.emergentagent.com/job_route-manager-27/artifacts/sd598o43_LogoBerlinesTAB.png';
 
-// Time configuration
 const SCHEDULE_START_HOUR = 5;
 const SCHEDULE_END_HOUR = 19;
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR;
 
-// Column widths
 const DRIVER_COL_WIDTH = 200;
 const CIRCUIT_COL_WIDTH = 70;
 const DAY_HOURS_COL_WIDTH = 60;
 const WEEK_HOURS_COL_WIDTH = 80;
 const FIXED_LEFT_WIDTH = DRIVER_COL_WIDTH + CIRCUIT_COL_WIDTH;
 const FIXED_RIGHT_WIDTH = DAY_HOURS_COL_WIDTH + WEEK_HOURS_COL_WIDTH;
-const ROW_HEIGHT = 36;
+const ROW_HEIGHT = 40;
 
 const generateTimeMarkers = (pixelsPerHour) => {
   const markers = [];
@@ -70,155 +75,64 @@ const getDayLetter = (dateStr) => {
   return ['D', 'L', 'M', 'W', 'J', 'V', 'S'][d.getDay()];
 };
 
-// Draggable Assignment Block
-const DraggableBlock = ({ assignment, shift, block, viewMode, pixelsPerHour, selectedDate }) => {
-  const dragId = `${assignment.id}-${shift.id}-${block?.id || 'main'}`;
+// Composant Draggable pour les blocs d'assignation
+function DraggableAssignmentBlock({ id, assignment, shift, block, pixelsPerHour, selectedDate, children }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: dragId,
+    id: id,
     data: { type: 'assignment', assignment, shift, block }
   });
 
-  const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
-  const dayLetter = getDayLetter(selectedDate);
-  
-  // Check if block applies to this day
-  if (block?.days && !block.days.includes(dayLetter)) return null;
-  
-  let startMinutes, endMinutes, bgColor, label;
-  
-  if (shift.is_admin) {
-    startMinutes = 6 * 60;
-    endMinutes = startMinutes + (shift.admin_hours || 8) * 60;
-    bgColor = shift.name === 'MECANO' ? '#795548' : '#607D8B';
-    label = shift.name;
-  } else if (block) {
-    startMinutes = timeToMinutes(block.start_time) - (block.hlp_before || 0);
-    endMinutes = timeToMinutes(block.end_time) + (block.hlp_after || 0);
-    bgColor = block.school_color || '#9E9E9E';
-    label = block.school_name || 'École';
-  } else {
-    return null;
-  }
-  
-  const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
-  const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
-  const textColor = getContrastColor(bgColor);
-  
-  const style = {
-    position: 'absolute',
-    left: Math.max(0, left),
-    width: Math.max(40, width),
-    top: 3,
-    height: ROW_HEIGHT - 6,
-    backgroundColor: bgColor,
-    color: textColor,
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 100 : 1,
-    cursor: 'grab',
-  };
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    zIndex: 1000,
+  } : undefined;
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            ref={setNodeRef}
-            {...listeners}
-            {...attributes}
-            className="rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border border-black/20 font-medium hover:shadow-lg transition-shadow select-none"
-            style={style}
-          >
-            <GripVertical className="h-3 w-3 flex-shrink-0 opacity-50" />
-            <span className="truncate">{label}</span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          <div className="text-xs space-y-1">
-            <div className="font-bold">Circuit {assignment.circuit_number} - {shift.name}</div>
-            {block && <div>École: {block.school_name}</div>}
-            {block && <div>Horaire: {block.start_time} - {block.end_time}</div>}
-            <div className="text-muted-foreground mt-1">Glissez pour réassigner</div>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+      {children(isDragging)}
+    </div>
   );
-};
+}
 
-// Droppable Row
-const DroppableRow = ({ employeeId, children, isOver }) => {
-  const { setNodeRef } = useDroppable({ id: employeeId });
-  
+// Composant Draggable pour les tâches temporaires
+function DraggableTaskBlock({ id, task, children }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: id,
+    data: { type: 'task', task }
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    zIndex: 1000,
+  } : undefined;
+
+  return (
+    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+      {children(isDragging)}
+    </div>
+  );
+}
+
+// Composant Droppable pour chaque ligne d'employé
+function DroppableEmployeeRow({ employeeId, children }) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `employee-${employeeId}`,
+    data: { employeeId }
+  });
+
   return (
     <div 
       ref={setNodeRef} 
-      className={`relative h-full transition-colors ${isOver ? 'bg-green-100 dark:bg-green-900/30' : ''}`}
+      className={`flex border-b border-border transition-all duration-200 ${isOver ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500 ring-inset' : 'hover:bg-muted/30'}`}
+      style={{ height: ROW_HEIGHT }}
     >
       {children}
     </div>
   );
-};
-
-// Temporary Task Block (also draggable)
-const DraggableTask = ({ task, pixelsPerHour }) => {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `task-${task.id}`,
-    data: { type: 'task', task }
-  });
-
-  const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
-  const startMinutes = timeToMinutes(task.start_time);
-  const endMinutes = timeToMinutes(task.end_time);
-  
-  const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
-  const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
-  const bgColor = task.school_color || '#FF69B4';
-  const textColor = getContrastColor(bgColor);
-
-  const style = {
-    position: 'absolute',
-    left: Math.max(0, left),
-    width: Math.max(40, width),
-    top: 3,
-    height: ROW_HEIGHT - 6,
-    backgroundColor: bgColor,
-    color: textColor,
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 100 : 1,
-    cursor: 'grab',
-  };
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            ref={setNodeRef}
-            {...listeners}
-            {...attributes}
-            className="rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border-2 border-dashed font-medium hover:shadow-lg transition-shadow select-none"
-            style={style}
-          >
-            <GripVertical className="h-3 w-3 flex-shrink-0 opacity-50" />
-            <span className="truncate">{task.name}</span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          <div className="text-xs">
-            <div className="font-bold">{task.name}</div>
-            <div>Horaire: {task.start_time} - {task.end_time}</div>
-            <div className="text-muted-foreground mt-1">Glissez pour réassigner</div>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-};
+}
 
 // Replacements Section
-const ReplacementsSection = ({ replacements, onAssign, selectedDate }) => {
+const ReplacementsSection = ({ replacements, selectedDate }) => {
   const { unassigned_assignments = [], unassigned_tasks = [], absent_items = [] } = replacements || {};
   const todayAbsentItems = absent_items.filter(item => item.date === selectedDate);
   const totalReplacements = unassigned_assignments.length + unassigned_tasks.length + todayAbsentItems.length;
@@ -226,7 +140,6 @@ const ReplacementsSection = ({ replacements, onAssign, selectedDate }) => {
   return (
     <div 
       className={`mb-3 p-3 rounded-lg border-2 shadow-sm ${totalReplacements > 0 ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/50' : 'border-green-300 bg-green-50 dark:bg-green-950/50'}`}
-      data-testid="replacements-section"
     >
       <div className="flex items-center gap-2">
         <div className={`p-1.5 rounded-full ${totalReplacements > 0 ? 'bg-amber-200 dark:bg-amber-800' : 'bg-green-200 dark:bg-green-800'}`}>
@@ -240,17 +153,12 @@ const ReplacementsSection = ({ replacements, onAssign, selectedDate }) => {
       {totalReplacements > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {unassigned_assignments.map(a => (
-            <Badge key={a.id} variant="outline" className="cursor-pointer text-xs bg-white dark:bg-gray-800 hover:bg-amber-100 border-amber-400" onClick={() => onAssign(a, 'assignment')}>
+            <Badge key={a.id} variant="outline" className="text-xs bg-white dark:bg-gray-800 border-amber-400">
               <Bus className="h-3 w-3 mr-1" />{a.circuit_number}
             </Badge>
           ))}
-          {unassigned_tasks.map(t => (
-            <Badge key={t.id} variant="outline" className="cursor-pointer text-xs bg-white dark:bg-gray-800 hover:bg-amber-100 border-dashed border-amber-400" onClick={() => onAssign(t, 'task')}>
-              {t.name}
-            </Badge>
-          ))}
           {todayAbsentItems.map((item, idx) => (
-            <Badge key={`absent-${idx}`} variant="outline" className="cursor-pointer text-xs bg-red-50 dark:bg-red-900/30 hover:bg-red-100 border-red-400" onClick={() => onAssign(item.data, 'assignment')}>
+            <Badge key={`absent-${idx}`} variant="outline" className="text-xs bg-red-50 dark:bg-red-900/30 border-red-400">
               <UserX className="h-3 w-3 mr-1" />{item.data.circuit_number}
             </Badge>
           ))}
@@ -290,22 +198,21 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showTempTaskModal, setShowTempTaskModal] = useState(false);
   
-  // Drag and drop state
-  const [activeDragItem, setActiveDragItem] = useState(null);
-  const [overEmployeeId, setOverEmployeeId] = useState(null);
+  // Drag state
+  const [activeId, setActiveId] = useState(null);
+  const [activeDragData, setActiveDragData] = useState(null);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [reassignData, setReassignData] = useState(null);
   
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 10,
+      },
+    })
   );
   
-  const topScrollRef = useRef(null);
-  const bottomScrollRef = useRef(null);
-  const headerScrollRef = useRef(null);
-  const bodyScrollRef = useRef(null);
   const containerRef = useRef(null);
-  
   const [pixelsPerHour, setPixelsPerHour] = useState(80);
   const totalScheduleWidth = useMemo(() => TOTAL_HOURS * pixelsPerHour, [pixelsPerHour]);
   const timeMarkers = useMemo(() => generateTimeMarkers(pixelsPerHour), [pixelsPerHour]);
@@ -323,13 +230,6 @@ export default function DashboardPage() {
     window.addEventListener('resize', calculateWidth);
     return () => window.removeEventListener('resize', calculateWidth);
   }, []);
-  
-  const handleScroll = (source) => (e) => {
-    const scrollLeft = e.target.scrollLeft;
-    [topScrollRef, bottomScrollRef, headerScrollRef, bodyScrollRef].forEach(ref => {
-      if (ref.current && ref.current !== e.target) ref.current.scrollLeft = scrollLeft;
-    });
-  };
   
   const fetchData = useCallback(async () => {
     try {
@@ -395,39 +295,42 @@ export default function DashboardPage() {
   
   const isEmployeeAbsent = (employeeId) => absences.some(a => a.employee_id === employeeId && a.start_date <= selectedDate && a.end_date >= selectedDate);
   
-  // Drag and Drop handlers
+  // DnD Handlers
   const handleDragStart = (event) => {
-    setActiveDragItem(event.active.data.current);
+    setActiveId(event.active.id);
+    setActiveDragData(event.active.data.current);
   };
   
-  const handleDragOver = (event) => {
-    const { over } = event;
-    if (over) {
-      setOverEmployeeId(over.id);
-    } else {
-      setOverEmployeeId(null);
-    }
-  };
-  
-  const handleDragEnd = async (event) => {
+  const handleDragEnd = (event) => {
     const { active, over } = event;
-    setActiveDragItem(null);
-    setOverEmployeeId(null);
+    setActiveId(null);
+    setActiveDragData(null);
     
-    if (!over || !active.data.current) return;
+    if (!over) return;
     
     const dragData = active.data.current;
-    const targetEmployeeId = over.id;
+    const dropData = over.data.current;
+    
+    if (!dragData || !dropData) return;
+    
+    const targetEmployeeId = dropData.employeeId;
+    if (!targetEmployeeId) return;
     
     // Don't do anything if dropped on same employee
-    if (dragData.type === 'assignment' && dragData.assignment.employee_id === targetEmployeeId) return;
-    if (dragData.type === 'task' && dragData.task.employee_id === targetEmployeeId) return;
+    const sourceEmployeeId = dragData.type === 'assignment' 
+      ? dragData.assignment.employee_id 
+      : dragData.task.employee_id;
     
-    // Open confirmation modal
+    if (sourceEmployeeId === targetEmployeeId) return;
+    
+    const targetEmployee = employees.find(e => e.id === targetEmployeeId);
+    if (!targetEmployee) return;
+    
+    // Show confirmation modal
     setReassignData({
       dragData,
       targetEmployeeId,
-      targetEmployee: employees.find(e => e.id === targetEmployeeId)
+      targetEmployee
     });
     setShowReassignModal(true);
   };
@@ -439,14 +342,12 @@ export default function DashboardPage() {
     
     try {
       if (dragData.type === 'assignment') {
-        // Reassign the assignment to new employee
         await api.put(`/assignments/${dragData.assignment.id}`, {
           ...dragData.assignment,
           employee_id: targetEmployeeId
         });
         toast.success(`Circuit ${dragData.assignment.circuit_number} réassigné à ${targetEmployee.name}`);
       } else if (dragData.type === 'task') {
-        // Reassign temporary task
         await api.put(`/temporary-tasks/${dragData.task.id}`, {
           ...dragData.task,
           employee_id: targetEmployeeId
@@ -463,14 +364,111 @@ export default function DashboardPage() {
     }
   };
   
-  const handleAssign = (item, type) => {
-    toast.info('Utilisez le glisser-déposer pour assigner un conducteur');
-  };
-  
   const handleTempTaskCreated = () => {
     setShowTempTaskModal(false);
     fetchData();
     toast.success('Tâche temporaire créée');
+  };
+
+  // Render block content
+  const renderBlockContent = (assignment, shift, block, isDragging) => {
+    const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
+    const dayLetter = getDayLetter(selectedDate);
+    
+    if (block?.days && block.days.length > 0 && !block.days.includes(dayLetter)) return null;
+    
+    let startMinutes, endMinutes, bgColor, label;
+    
+    if (shift.is_admin) {
+      startMinutes = 6 * 60;
+      endMinutes = startMinutes + (shift.admin_hours || 8) * 60;
+      bgColor = shift.name === 'MECANO' ? '#795548' : '#607D8B';
+      label = shift.name;
+    } else if (block) {
+      startMinutes = timeToMinutes(block.start_time) - (block.hlp_before || 0);
+      endMinutes = timeToMinutes(block.end_time) + (block.hlp_after || 0);
+      bgColor = block.school_color || '#9E9E9E';
+      label = block.school_name || 'École';
+    } else {
+      return null;
+    }
+    
+    const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
+    const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
+    const textColor = getContrastColor(bgColor);
+    
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border border-black/20 font-medium transition-all select-none ${isDragging ? 'opacity-50 scale-105 shadow-xl cursor-grabbing' : 'cursor-grab hover:shadow-lg hover:scale-[1.02]'}`}
+              style={{
+                left: Math.max(0, left),
+                width: Math.max(50, width),
+                top: 4,
+                height: ROW_HEIGHT - 8,
+                backgroundColor: bgColor,
+                color: textColor,
+              }}
+            >
+              <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
+              <span className="truncate">{label}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <div className="text-xs space-y-1">
+              <div className="font-bold">Circuit {assignment.circuit_number} - {shift.name}</div>
+              {block && <div>École: {block.school_name}</div>}
+              {block && <div>Horaire: {block.start_time} - {block.end_time}</div>}
+              <div className="text-green-600 font-medium mt-1">↕ Glissez pour réassigner</div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  const renderTaskContent = (task, isDragging) => {
+    const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
+    const startMinutes = timeToMinutes(task.start_time);
+    const endMinutes = timeToMinutes(task.end_time);
+    
+    const left = ((startMinutes - scheduleStartMinutes) / 60) * pixelsPerHour;
+    const width = ((endMinutes - startMinutes) / 60) * pixelsPerHour;
+    const bgColor = task.school_color || '#FF69B4';
+    const textColor = getContrastColor(bgColor);
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={`absolute rounded text-[10px] flex items-center gap-1 px-1 overflow-hidden border-2 border-dashed font-medium transition-all select-none ${isDragging ? 'opacity-50 scale-105 shadow-xl cursor-grabbing' : 'cursor-grab hover:shadow-lg'}`}
+              style={{
+                left: Math.max(0, left),
+                width: Math.max(50, width),
+                top: 4,
+                height: ROW_HEIGHT - 8,
+                backgroundColor: bgColor,
+                color: textColor,
+                borderColor: textColor,
+              }}
+            >
+              <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
+              <span className="truncate">{task.name}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <div className="text-xs">
+              <div className="font-bold">{task.name}</div>
+              <div>Horaire: {task.start_time} - {task.end_time}</div>
+              <div className="text-green-600 font-medium mt-1">↕ Glissez pour réassigner</div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
   };
   
   if (loading) {
@@ -492,10 +490,10 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground hidden md:inline">{admin?.name}</span>
-            <Button variant="ghost" size="icon" onClick={toggleTheme} data-testid="theme-toggle">
+            <Button variant="ghost" size="icon" onClick={toggleTheme}>
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </Button>
-            <Button variant="ghost" size="icon" onClick={handleLogout} data-testid="logout-button">
+            <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
@@ -503,13 +501,13 @@ export default function DashboardPage() {
         <div className="px-4 pb-2">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid grid-cols-7 w-full max-w-3xl">
-              <TabsTrigger value="schedule" className="flex items-center gap-1"><Calendar className="h-4 w-4" /><span className="hidden sm:inline">Horaires</span></TabsTrigger>
-              <TabsTrigger value="employees" className="flex items-center gap-1"><Users className="h-4 w-4" /><span className="hidden sm:inline">Employés</span></TabsTrigger>
-              <TabsTrigger value="schools" className="flex items-center gap-1"><School className="h-4 w-4" /><span className="hidden sm:inline">Écoles</span></TabsTrigger>
-              <TabsTrigger value="assignments" className="flex items-center gap-1"><Bus className="h-4 w-4" /><span className="hidden sm:inline">Assignations</span></TabsTrigger>
-              <TabsTrigger value="absences" className="flex items-center gap-1"><UserX className="h-4 w-4" /><span className="hidden sm:inline">Absences</span></TabsTrigger>
-              <TabsTrigger value="holidays" className="flex items-center gap-1"><Settings className="h-4 w-4" /><span className="hidden sm:inline">Jours fériés</span></TabsTrigger>
-              <TabsTrigger value="reports" className="flex items-center gap-1"><FileText className="h-4 w-4" /><span className="hidden sm:inline">Rapports</span></TabsTrigger>
+              <TabsTrigger value="schedule"><Calendar className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Horaires</span></TabsTrigger>
+              <TabsTrigger value="employees"><Users className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Employés</span></TabsTrigger>
+              <TabsTrigger value="schools"><School className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Écoles</span></TabsTrigger>
+              <TabsTrigger value="assignments"><Bus className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Assignations</span></TabsTrigger>
+              <TabsTrigger value="absences"><UserX className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Absences</span></TabsTrigger>
+              <TabsTrigger value="holidays"><Settings className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Jours fériés</span></TabsTrigger>
+              <TabsTrigger value="reports"><FileText className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Rapports</span></TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -517,7 +515,7 @@ export default function DashboardPage() {
       
       <main className="p-4" ref={containerRef}>
         {activeTab === 'schedule' && (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+          <>
             {/* Controls */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div className="flex items-center gap-2">
@@ -530,7 +528,7 @@ export default function DashboardPage() {
                   ))}
                 </div>
                 <Button variant="outline" size="icon" onClick={goToNextWeek}><ChevronRight className="h-4 w-4" /></Button>
-                <Button variant="outline" size="sm" onClick={goToToday} className="ml-2" data-testid="today-btn"><CalendarDays className="h-4 w-4 mr-1" />Aujourd'hui</Button>
+                <Button variant="outline" size="sm" onClick={goToToday} className="ml-2"><CalendarDays className="h-4 w-4 mr-1" />Aujourd'hui</Button>
                 <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                   <PopoverTrigger asChild><Button variant="outline" size="icon"><Calendar className="h-4 w-4" /></Button></PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -539,7 +537,7 @@ export default function DashboardPage() {
                 </Popover>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={toggleSortMode} data-testid="sort-toggle-btn"><ArrowUpDown className="h-4 w-4 mr-1" />{sortMode === 'circuit' ? 'Tri: Circuit' : 'Tri: Nom'}</Button>
+                <Button variant="outline" size="sm" onClick={toggleSortMode}><ArrowUpDown className="h-4 w-4 mr-1" />{sortMode === 'circuit' ? 'Tri: Circuit' : 'Tri: Nom'}</Button>
                 <div className="flex rounded-md border border-input overflow-hidden">
                   {['detailed', 'complete', 'abbreviated'].map((mode, idx) => (
                     <button key={mode} className={`px-3 py-1.5 text-sm font-medium transition-colors ${idx > 0 ? 'border-l border-input' : ''} ${viewMode === mode ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`} onClick={() => setViewMode(mode)}>
@@ -547,143 +545,162 @@ export default function DashboardPage() {
                     </button>
                   ))}
                 </div>
-                <Button onClick={() => setShowTempTaskModal(true)} className="bg-[#4CAF50] hover:bg-[#43A047]" data-testid="add-temp-task-btn"><Plus className="h-4 w-4 mr-1" />Tâche temp.</Button>
+                <Button onClick={() => setShowTempTaskModal(true)} className="bg-[#4CAF50] hover:bg-[#43A047]"><Plus className="h-4 w-4 mr-1" />Tâche temp.</Button>
               </div>
             </div>
 
-            <ReplacementsSection replacements={replacements} onAssign={handleAssign} selectedDate={selectedDate} />
+            <ReplacementsSection replacements={replacements} selectedDate={selectedDate} />
 
             {/* Drag instruction */}
-            <div className="mb-2 text-sm text-muted-foreground flex items-center gap-2">
-              <GripVertical className="h-4 w-4" />
-              <span>Glissez-déposez les blocs pour réassigner à un autre conducteur</span>
+            <div className="mb-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center gap-2">
+              <GripVertical className="h-5 w-5 text-blue-600" />
+              <span className="text-sm text-blue-800 dark:text-blue-200 font-medium">
+                Glissez-déposez les blocs colorés pour réassigner un circuit à un autre conducteur
+              </span>
             </div>
 
-            {/* Schedule Grid */}
-            <div className="border border-border rounded-lg overflow-hidden bg-card">
-              {/* Top scrollbar */}
-              <div className="flex border-b border-border bg-muted/30">
-                <div style={{ width: FIXED_LEFT_WIDTH }} className="flex-shrink-0" />
-                <div ref={topScrollRef} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin" onScroll={handleScroll('top')} style={{ minWidth: 0, height: 12 }}>
-                  <div style={{ width: totalScheduleWidth, height: 1 }} />
-                </div>
-                <div style={{ width: FIXED_RIGHT_WIDTH }} className="flex-shrink-0" />
-              </div>
-
-              {/* Header */}
-              <div className="flex border-b-2 border-border bg-muted/70">
-                <div className="flex-shrink-0 flex" style={{ width: FIXED_LEFT_WIDTH }}>
-                  <div className="font-semibold text-sm px-2 py-2 border-r border-border flex items-center" style={{ width: DRIVER_COL_WIDTH }}>Conducteur</div>
-                  <div className="font-semibold text-sm px-1 py-2 border-r-2 border-border flex items-center justify-center" style={{ width: CIRCUIT_COL_WIDTH }}>Circuit</div>
-                </div>
-                <div ref={headerScrollRef} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none" onScroll={handleScroll('header')} style={{ minWidth: 0 }}>
-                  <div className="relative h-9" style={{ width: totalScheduleWidth }}>
-                    {timeMarkers.map((marker, idx) => (
-                      <div key={marker.hour} className="absolute top-0 h-full flex items-center border-l border-border/70" style={{ left: marker.position, width: idx < timeMarkers.length - 1 ? pixelsPerHour : 'auto' }}>
-                        <span className="pl-1 text-xs font-semibold">{marker.label}</span>
-                      </div>
-                    ))}
+            {/* Schedule Grid with DnD */}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+              <div className="border border-border rounded-lg overflow-hidden bg-card">
+                {/* Header */}
+                <div className="flex border-b-2 border-border bg-muted/70">
+                  <div className="flex-shrink-0 flex" style={{ width: FIXED_LEFT_WIDTH }}>
+                    <div className="font-semibold text-sm px-2 py-2 border-r border-border flex items-center" style={{ width: DRIVER_COL_WIDTH }}>Conducteur</div>
+                    <div className="font-semibold text-sm px-1 py-2 border-r-2 border-border flex items-center justify-center" style={{ width: CIRCUIT_COL_WIDTH }}>Circuit</div>
+                  </div>
+                  <div className="flex-1 overflow-x-auto" style={{ minWidth: 0 }}>
+                    <div className="relative h-10" style={{ width: totalScheduleWidth }}>
+                      {timeMarkers.map((marker, idx) => (
+                        <div key={marker.hour} className="absolute top-0 h-full flex items-center border-l border-border/70" style={{ left: marker.position, width: idx < timeMarkers.length - 1 ? pixelsPerHour : 'auto' }}>
+                          <span className="pl-1 text-xs font-semibold">{marker.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 flex" style={{ width: FIXED_RIGHT_WIDTH }}>
+                    <div className="font-semibold text-xs px-1 py-2 border-l-2 border-border flex items-center justify-center" style={{ width: DAY_HOURS_COL_WIDTH }}>Jour</div>
+                    <div className="font-semibold text-xs px-1 py-2 border-l border-border flex items-center justify-center" style={{ width: WEEK_HOURS_COL_WIDTH }}>Semaine</div>
                   </div>
                 </div>
-                <div className="flex-shrink-0 flex" style={{ width: FIXED_RIGHT_WIDTH }}>
-                  <div className="font-semibold text-xs px-1 py-2 border-l-2 border-border flex items-center justify-center" style={{ width: DAY_HOURS_COL_WIDTH }}>Jour</div>
-                  <div className="font-semibold text-xs px-1 py-2 border-l border-border flex items-center justify-center" style={{ width: WEEK_HOURS_COL_WIDTH }}>Semaine</div>
-                </div>
-              </div>
 
-              {/* Body */}
-              <div ref={bodyScrollRef} className="max-h-[calc(100vh-420px)] overflow-auto" onScroll={handleScroll('body')}>
-                {sortedEmployees.map((emp) => {
-                  const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
-                  const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
-                  const weeklyMinutes = empSchedule?.weekly_total || 0;
-                  const isAbsent = isEmployeeAbsent(emp.id);
-                  const isDropTarget = overEmployeeId === emp.id;
-                  
-                  const dayAssignments = isAbsent ? [] : assignments.filter(a => a.employee_id === emp.id && a.start_date <= selectedDate && a.end_date >= selectedDate);
-                  const dayTasks = isAbsent ? [] : tempTasks.filter(t => t.employee_id === emp.id && t.date === selectedDate);
-                  
-                  const isOvertime = weeklyMinutes > 39 * 60;
-                  const isUndertime = weeklyMinutes < 15 * 60 && weeklyMinutes > 0;
-                  
-                  return (
-                    <div key={emp.id} className={`flex border-b border-border transition-colors ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : isDropTarget ? 'bg-green-100 dark:bg-green-900/30' : 'hover:bg-muted/30'}`} style={{ height: ROW_HEIGHT }} data-testid={`schedule-row-${emp.id}`}>
-                      <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
-                        <div className={`px-2 border-r border-border flex items-center gap-1 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`} style={{ width: DRIVER_COL_WIDTH }}>
-                          <span className={`font-medium text-sm truncate ${isAbsent ? 'text-red-600 dark:text-red-400' : ''}`}>{emp.name}</span>
-                          {isAbsent && <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">ABS</Badge>}
+                {/* Body */}
+                <div className="max-h-[calc(100vh-450px)] overflow-auto">
+                  {sortedEmployees.map((emp) => {
+                    const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
+                    const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
+                    const weeklyMinutes = empSchedule?.weekly_total || 0;
+                    const isAbsent = isEmployeeAbsent(emp.id);
+                    
+                    const dayAssignments = isAbsent ? [] : assignments.filter(a => a.employee_id === emp.id && a.start_date <= selectedDate && a.end_date >= selectedDate);
+                    const dayTasks = isAbsent ? [] : tempTasks.filter(t => t.employee_id === emp.id && t.date === selectedDate);
+                    
+                    const isOvertime = weeklyMinutes > 39 * 60;
+                    const isUndertime = weeklyMinutes < 15 * 60 && weeklyMinutes > 0;
+                    
+                    return (
+                      <DroppableEmployeeRow key={emp.id} employeeId={emp.id}>
+                        {/* Fixed left columns */}
+                        <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
+                          <div className={`px-2 border-r border-border flex items-center gap-1 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`} style={{ width: DRIVER_COL_WIDTH }}>
+                            <span className={`font-medium text-sm truncate ${isAbsent ? 'text-red-600 dark:text-red-400' : ''}`}>{emp.name}</span>
+                            {isAbsent && <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">ABS</Badge>}
+                          </div>
+                          <div className={`px-1 border-r-2 border-border flex items-center justify-center gap-1 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`} style={{ width: CIRCUIT_COL_WIDTH }}>
+                            <span className="text-xs text-muted-foreground font-medium">{dayAssignments.map(a => a.circuit_number).join(', ') || '-'}</span>
+                            {dayAssignments.some(a => a.is_adapted) && <Accessibility className="h-3 w-3 text-blue-600 flex-shrink-0" />}
+                          </div>
                         </div>
-                        <div className={`px-1 border-r-2 border-border flex items-center justify-center gap-1 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`} style={{ width: CIRCUIT_COL_WIDTH }}>
-                          <span className="text-xs text-muted-foreground font-medium">{dayAssignments.map(a => a.circuit_number).join(', ') || '-'}</span>
-                          {dayAssignments.some(a => a.is_adapted) && <Accessibility className="h-3 w-3 text-blue-600 flex-shrink-0" />}
-                        </div>
-                      </div>
-                      
-                      <DroppableRow employeeId={emp.id} isOver={isDropTarget}>
-                        <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+                        
+                        {/* Scrollable schedule area */}
+                        <div className="flex-1 overflow-x-auto" style={{ minWidth: 0 }}>
                           <div className="relative h-full" style={{ width: totalScheduleWidth }}>
-                            {timeMarkers.map((marker) => <div key={marker.hour} className="absolute top-0 bottom-0 border-l border-border/40" style={{ left: marker.position }} />)}
+                            {/* Grid lines */}
+                            {timeMarkers.map((marker) => (
+                              <div key={marker.hour} className="absolute top-0 bottom-0 border-l border-border/40" style={{ left: marker.position }} />
+                            ))}
                             
+                            {/* Assignment blocks */}
                             {dayAssignments.map(assignment => 
                               assignment.shifts?.map(shift => 
                                 shift.is_admin ? (
-                                  <DraggableBlock key={`${assignment.id}-${shift.id}`} assignment={assignment} shift={shift} block={null} viewMode={viewMode} pixelsPerHour={pixelsPerHour} selectedDate={selectedDate} />
+                                  <DraggableAssignmentBlock
+                                    key={`${assignment.id}-${shift.id}`}
+                                    id={`${assignment.id}-${shift.id}`}
+                                    assignment={assignment}
+                                    shift={shift}
+                                    block={null}
+                                    pixelsPerHour={pixelsPerHour}
+                                    selectedDate={selectedDate}
+                                  >
+                                    {(isDragging) => renderBlockContent(assignment, shift, null, isDragging)}
+                                  </DraggableAssignmentBlock>
                                 ) : (
                                   shift.blocks?.map(block => (
-                                    <DraggableBlock key={`${assignment.id}-${shift.id}-${block.id}`} assignment={assignment} shift={shift} block={block} viewMode={viewMode} pixelsPerHour={pixelsPerHour} selectedDate={selectedDate} />
+                                    <DraggableAssignmentBlock
+                                      key={`${assignment.id}-${shift.id}-${block.id}`}
+                                      id={`${assignment.id}-${shift.id}-${block.id}`}
+                                      assignment={assignment}
+                                      shift={shift}
+                                      block={block}
+                                      pixelsPerHour={pixelsPerHour}
+                                      selectedDate={selectedDate}
+                                    >
+                                      {(isDragging) => renderBlockContent(assignment, shift, block, isDragging)}
+                                    </DraggableAssignmentBlock>
                                   ))
                                 )
                               )
                             )}
                             
-                            {dayTasks.map(task => <DraggableTask key={task.id} task={task} pixelsPerHour={pixelsPerHour} />)}
+                            {/* Task blocks */}
+                            {dayTasks.map(task => (
+                              <DraggableTaskBlock key={task.id} id={`task-${task.id}`} task={task}>
+                                {(isDragging) => renderTaskContent(task, isDragging)}
+                              </DraggableTaskBlock>
+                            ))}
                             
+                            {/* Absent overlay */}
                             {isAbsent && (
-                              <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="absolute inset-0 flex items-center justify-center bg-red-100/30 dark:bg-red-900/20">
                                 <span className="text-red-500 text-xs font-medium bg-red-100 dark:bg-red-900/50 px-2 py-0.5 rounded">Absent</span>
                               </div>
                             )}
                           </div>
                         </div>
-                      </DroppableRow>
-                      
-                      <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_RIGHT_WIDTH }}>
-                        <div className={`px-1 border-l-2 border-border flex items-center justify-center tabular-nums text-xs ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20 text-muted-foreground' : ''}`} style={{ width: DAY_HOURS_COL_WIDTH }}>
-                          {isAbsent ? '-' : formatHoursMinutes(dailyMinutes)}
+                        
+                        {/* Fixed right columns */}
+                        <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_RIGHT_WIDTH }}>
+                          <div className={`px-1 border-l-2 border-border flex items-center justify-center tabular-nums text-xs ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20 text-muted-foreground' : ''}`} style={{ width: DAY_HOURS_COL_WIDTH }}>
+                            {isAbsent ? '-' : formatHoursMinutes(dailyMinutes)}
+                          </div>
+                          <div className={`px-1 border-l border-border flex items-center justify-center gap-0.5 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`} style={{ width: WEEK_HOURS_COL_WIDTH }}>
+                            <span className="tabular-nums text-xs font-medium">{formatHoursMinutes(weeklyMinutes)}</span>
+                            {isOvertime && <AlertTriangle className="h-3 w-3 text-red-500" />}
+                            {isUndertime && <AlertTriangle className="h-3 w-3 text-amber-500" />}
+                          </div>
                         </div>
-                        <div className={`px-1 border-l border-border flex items-center justify-center gap-0.5 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`} style={{ width: WEEK_HOURS_COL_WIDTH }}>
-                          <span className="tabular-nums text-xs font-medium">{formatHoursMinutes(weeklyMinutes)}</span>
-                          {isOvertime && <AlertTriangle className="h-3 w-3 text-red-500" />}
-                          {isUndertime && <AlertTriangle className="h-3 w-3 text-amber-500" />}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {sortedEmployees.length === 0 && (
-                  <div className="p-8 text-center text-muted-foreground">Aucun employé. Ajoutez des employés dans l'onglet "Employés".</div>
+                      </DroppableEmployeeRow>
+                    );
+                  })}
+                  {sortedEmployees.length === 0 && (
+                    <div className="p-8 text-center text-muted-foreground">Aucun employé.</div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Drag Overlay */}
+              <DragOverlay>
+                {activeId && activeDragData && (
+                  <div className="bg-[#4CAF50] text-white px-4 py-2 rounded-lg shadow-2xl font-medium text-sm flex items-center gap-2">
+                    <GripVertical className="h-4 w-4" />
+                    {activeDragData.type === 'assignment' 
+                      ? `Circuit ${activeDragData.assignment.circuit_number}` 
+                      : activeDragData.task?.name}
+                  </div>
                 )}
-              </div>
-
-              {/* Bottom scrollbar */}
-              <div className="flex border-t border-border bg-muted/30">
-                <div style={{ width: FIXED_LEFT_WIDTH }} className="flex-shrink-0" />
-                <div ref={bottomScrollRef} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin" onScroll={handleScroll('bottom')} style={{ minWidth: 0, height: 12 }}>
-                  <div style={{ width: totalScheduleWidth, height: 1 }} />
-                </div>
-                <div style={{ width: FIXED_RIGHT_WIDTH }} className="flex-shrink-0" />
-              </div>
-            </div>
-            
-            {/* Drag Overlay */}
-            <DragOverlay>
-              {activeDragItem && (
-                <div className="bg-primary text-primary-foreground px-3 py-2 rounded shadow-lg text-sm font-medium">
-                  {activeDragItem.type === 'assignment' ? `Circuit ${activeDragItem.assignment.circuit_number}` : activeDragItem.task?.name}
-                </div>
-              )}
-            </DragOverlay>
-          </DndContext>
+              </DragOverlay>
+            </DndContext>
+          </>
         )}
         
         {activeTab === 'employees' && <EmployeesPage employees={employees} onUpdate={fetchData} />}
@@ -703,19 +720,19 @@ export default function DashboardPage() {
             <DialogTitle>Confirmer la réassignation</DialogTitle>
             <DialogDescription>
               {reassignData?.dragData?.type === 'assignment' 
-                ? `Réassigner le circuit ${reassignData?.dragData?.assignment?.circuit_number} à ${reassignData?.targetEmployee?.name}?`
-                : `Réassigner la tâche "${reassignData?.dragData?.task?.name}" à ${reassignData?.targetEmployee?.name}?`
+                ? `Voulez-vous réassigner le circuit ${reassignData?.dragData?.assignment?.circuit_number} à ${reassignData?.targetEmployee?.name}?`
+                : `Voulez-vous réassigner la tâche "${reassignData?.dragData?.task?.name}" à ${reassignData?.targetEmployee?.name}?`
               }
             </DialogDescription>
           </DialogHeader>
           <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
             <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>Note:</strong> Cette action va modifier l'assignation de façon permanente.
+              <strong>Attention:</strong> Cette action modifiera l'assignation de façon permanente.
             </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReassignModal(false)}>Annuler</Button>
-            <Button onClick={handleConfirmReassign} className="bg-[#4CAF50] hover:bg-[#43A047]">Confirmer</Button>
+            <Button onClick={handleConfirmReassign} className="bg-[#4CAF50] hover:bg-[#43A047]">Confirmer la réassignation</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
