@@ -54,6 +54,16 @@ export const deleteHoliday = (id) => api.delete(`/holidays/${id}`);
 export const getSchedule = (params) => api.get('/schedule', { params });
 export const checkConflict = (data) => api.post('/check-conflict', data);
 
+// Temporary Reassignments (Drag & Drop)
+export const getTemporaryReassignments = (date) => 
+  api.get('/temporary-reassignments', { params: date ? { date } : {} });
+export const createTemporaryReassignment = (data) => 
+  api.post('/temporary-reassignments', data);
+export const deleteTemporaryReassignment = (id) => 
+  api.delete(`/temporary-reassignments/${id}`);
+export const deleteReassignmentsByDate = (date) => 
+  api.delete(`/temporary-reassignments/by-date/${date}`);
+
 // Reports
 export const getHoursReportPDF = (startDate, endDate, employeeIds = '', sortBy = 'name') => {
   return `${API}/reports/hours-pdf?start_date=${startDate}&end_date=${endDate}&employee_ids=${employeeIds}&sort_by=${sortBy}`;
