@@ -462,16 +462,19 @@ export default function DashboardPage() {
     const targetEmployeeId = dropData.employeeId;
     
     // Determine source info
-    let assignment, shiftId, blockId, originalEmployeeId;
+    let assignment, shift, blockId, originalEmployeeId;
+    let isShiftDrag = false; // Flag to indicate we're dragging an entire shift (abbreviated view)
     
     if (dragData.type === 'assignment') {
       assignment = dragData.assignment;
-      shiftId = dragData.shift.id;
+      shift = dragData.shift;
       blockId = dragData.block?.id || null;
       originalEmployeeId = assignment.employee_id;
+      // In abbreviated view, if no specific block, we're dragging the whole shift
+      isShiftDrag = viewMode === 'abbreviated' && !dragData.block && !shift.is_admin;
     } else if (dragData.type === 'unassigned_block' || dragData.type === 'absent_block' || dragData.type === 'temp_unassigned_block') {
       assignment = dragData.assignment;
-      shiftId = dragData.shift.id;
+      shift = dragData.shift;
       blockId = dragData.block?.id || null;
       originalEmployeeId = assignment.employee_id;
     } else if (dragData.type === 'task') {
@@ -481,23 +484,48 @@ export default function DashboardPage() {
       return;
     }
     
+    const shiftId = shift.id;
+    const dayLetter = getDayLetter(selectedDate);
+    
+    // Get blocks to reassign (all blocks if shift drag, otherwise just the one block)
+    let blocksToReassign = [];
+    if (isShiftDrag && shift.blocks) {
+      // Get all blocks that apply to this day
+      blocksToReassign = shift.blocks.filter(b => {
+        if (b.days && b.days.length > 0 && !b.days.includes(dayLetter)) return false;
+        return true;
+      });
+    } else if (blockId) {
+      const block = shift.blocks?.find(b => b.id === blockId);
+      if (block) blocksToReassign = [block];
+    } else if (shift.is_admin) {
+      // Admin shift - no blocks, use null
+      blocksToReassign = [null];
+    }
+    
+    if (blocksToReassign.length === 0 && !shift.is_admin) {
+      toast.error('Aucun bloc à réassigner pour ce jour');
+      return;
+    }
+    
     // If dropping on replacement row, unassign for the day
     if (dropData.isReplacement) {
-      // Check if already in replacements
-      if (isBlockInReplacements(assignment, shiftId, blockId)) {
-        toast.info('Ce bloc est déjà dans les remplacements');
-        return;
-      }
-      
       try {
-        await createTemporaryReassignment({
-          date: selectedDate,
-          assignment_id: assignment.id,
-          shift_id: shiftId,
-          block_id: blockId,
-          original_employee_id: originalEmployeeId,
-          new_employee_id: null // null = unassigned (in replacements)
-        });
+        // Create reassignments for all blocks
+        for (const block of blocksToReassign) {
+          const bId = block?.id || null;
+          // Skip if already in replacements
+          if (isBlockInReplacements(assignment, shiftId, bId)) continue;
+          
+          await createTemporaryReassignment({
+            date: selectedDate,
+            assignment_id: assignment.id,
+            shift_id: shiftId,
+            block_id: bId,
+            original_employee_id: originalEmployeeId,
+            new_employee_id: null
+          });
+        }
         toast.success(`Circuit ${assignment.circuit_number} mis en remplacement pour le ${selectedDate}`);
         fetchData();
       } catch (error) {
@@ -508,16 +536,32 @@ export default function DashboardPage() {
     
     if (!targetEmployeeId) return;
     
-    // Get current effective employee
-    const currentEmployeeId = getEffectiveEmployeeId(assignment, shiftId, blockId);
-    if (currentEmployeeId === targetEmployeeId) return;
-    
     const targetEmployee = activeEmployees.find(e => e.id === targetEmployeeId);
     if (!targetEmployee) return;
     
-    // Create temporary reassignment in backend
+    // Create temporary reassignments in backend for all blocks
     try {
-      await createTemporaryReassignment({
+      for (const block of blocksToReassign) {
+        const bId = block?.id || null;
+        // Check if already assigned to target
+        const currentEmp = getEffectiveEmployeeId(assignment, shiftId, bId);
+        if (currentEmp === targetEmployeeId) continue;
+        
+        await createTemporaryReassignment({
+          date: selectedDate,
+          assignment_id: assignment.id,
+          shift_id: shiftId,
+          block_id: bId,
+          original_employee_id: originalEmployeeId,
+          new_employee_id: targetEmployeeId
+        });
+      }
+      toast.success(`Circuit ${assignment.circuit_number} assigné à ${targetEmployee.name} pour le ${selectedDate}`);
+      fetchData();
+    } catch (error) {
+      toast.error('Erreur lors de la réassignation');
+    }
+  };
         date: selectedDate,
         assignment_id: assignment.id,
         shift_id: shiftId,
