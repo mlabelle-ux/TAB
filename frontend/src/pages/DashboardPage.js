@@ -27,8 +27,10 @@ import {
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
-  Bus, UserX, Info
+  Bus, UserX, Info, CalendarDays, ArrowUpDown
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar as CalendarComponent } from '../components/ui/calendar';
 import { toast } from 'sonner';
 
 import EmployeesPage from './EmployeesPage';
@@ -41,12 +43,10 @@ import TemporaryTaskModal from '../components/TemporaryTaskModal';
 
 const LOGO_URL = 'https://customer-assets.emergentagent.com/job_route-manager-27/artifacts/sd598o43_LogoBerlinesTAB.png';
 
-// Time configuration - 5h00 à 19h59
+// Time configuration - 5h00 à 18h59
 const SCHEDULE_START_HOUR = 5;
-const SCHEDULE_END_HOUR = 20; // 20h00 = 19h59 max
-const PIXELS_PER_HOUR = 80;
-const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR;
-const TOTAL_SCHEDULE_WIDTH = TOTAL_HOURS * PIXELS_PER_HOUR;
+const SCHEDULE_END_HOUR = 19; // 19h00 = 18h59 max
+const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR; // 14 heures
 
 // Column widths - Conducteur élargi
 const DRIVER_COL_WIDTH = 200;
