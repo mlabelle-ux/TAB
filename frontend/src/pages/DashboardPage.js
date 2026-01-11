@@ -6,6 +6,7 @@ import {
   getSchedule, getEmployees, getSchools, getAssignments, 
   getTemporaryTasks, getAbsences, getHolidays
 } from '../lib/api';
+import api from '../lib/api';
 import { 
   formatHoursMinutes, getWeekDates, getMonday, timeToMinutes, 
   getContrastColor, formatDate 
@@ -27,11 +28,26 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Calendar as CalendarComponent } from '../components/ui/calendar';
 import { 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from '../components/ui/select';
+import { Label } from '../components/ui/label';
+import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
-  Bus, UserX, Info, CalendarDays, ArrowUpDown, Accessibility
+  Bus, UserX, Info, CalendarDays, ArrowUpDown, Accessibility, GripVertical
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable
+} from '@dnd-kit/core';
 
 import EmployeesPage from './EmployeesPage';
 import SchoolsPage from './SchoolsPage';
