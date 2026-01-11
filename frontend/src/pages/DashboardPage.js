@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +18,12 @@ import {
 } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../components/ui/tooltip';
 import { 
   Sun, Moon, LogOut, ChevronLeft, ChevronRight, Calendar,
   Users, School, Settings, FileText, Plus, AlertTriangle,
@@ -35,20 +41,23 @@ import TemporaryTaskModal from '../components/TemporaryTaskModal';
 
 const LOGO_URL = 'https://customer-assets.emergentagent.com/job_route-manager-27/artifacts/sd598o43_LogoBerlinesTAB.png';
 
-// Time configuration
+// Time configuration - 5h00 à 19h59
 const SCHEDULE_START_HOUR = 5;
-const SCHEDULE_END_HOUR = 20;
-const PIXELS_PER_HOUR = 100; // Increased for better visibility
+const SCHEDULE_END_HOUR = 20; // 20h00 = 19h59 max
+const PIXELS_PER_HOUR = 80;
 const TOTAL_HOURS = SCHEDULE_END_HOUR - SCHEDULE_START_HOUR;
 const TOTAL_SCHEDULE_WIDTH = TOTAL_HOURS * PIXELS_PER_HOUR;
 
-// Column widths
-const DRIVER_COL_WIDTH = 160;
+// Column widths - Conducteur élargi
+const DRIVER_COL_WIDTH = 200;
 const CIRCUIT_COL_WIDTH = 70;
-const DAY_HOURS_COL_WIDTH = 70;
-const WEEK_HOURS_COL_WIDTH = 90;
+const DAY_HOURS_COL_WIDTH = 60;
+const WEEK_HOURS_COL_WIDTH = 80;
 const FIXED_LEFT_WIDTH = DRIVER_COL_WIDTH + CIRCUIT_COL_WIDTH;
 const FIXED_RIGHT_WIDTH = DAY_HOURS_COL_WIDTH + WEEK_HOURS_COL_WIDTH;
+
+// Row height - réduite d'un tiers
+const ROW_HEIGHT = 36;
 
 // Generate time markers
 const generateTimeMarkers = () => {
@@ -65,107 +74,171 @@ const generateTimeMarkers = () => {
 
 const TIME_MARKERS = generateTimeMarkers();
 
-const ScheduleBlock = ({ block, viewMode }) => {
+// Block with tooltip
+const ScheduleBlock = ({ block, viewMode, showHlpInColor = false }) => {
   const startMinutes = timeToMinutes(block.start_time);
   const endMinutes = timeToMinutes(block.end_time);
   const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
   
-  const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
-  const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
+  const hlpBeforeMinutes = block.hlp_before || 0;
+  const hlpAfterMinutes = block.hlp_after || 0;
+  
+  // Position with HLP included for "complete" view
+  const effectiveStart = showHlpInColor ? startMinutes - hlpBeforeMinutes : startMinutes;
+  const effectiveEnd = showHlpInColor ? endMinutes + hlpAfterMinutes : endMinutes;
+  
+  const left = ((effectiveStart - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
+  const width = ((effectiveEnd - effectiveStart) / 60) * PIXELS_PER_HOUR;
   
   if (left + width < 0 || left > TOTAL_SCHEDULE_WIDTH) return null;
   
   const bgColor = block.school_color || '#9E9E9E';
   const textColor = getContrastColor(bgColor);
   
-  const hlpBeforeWidth = (block.hlp_before / 60) * PIXELS_PER_HOUR;
-  const hlpAfterWidth = (block.hlp_after / 60) * PIXELS_PER_HOUR;
-  
-  return (
-    <>
-      {viewMode === 'detailed' && block.hlp_before > 0 && (
-        <div
-          className="absolute rounded text-[10px] flex items-center justify-center bg-gray-500 text-white font-medium"
-          style={{
-            left: Math.max(0, left - hlpBeforeWidth),
-            width: hlpBeforeWidth,
-            top: 6,
-            height: 'calc(100% - 12px)'
-          }}
-        >
-          HLP
-        </div>
-      )}
-      <div
-        className="absolute rounded cursor-pointer text-[11px] flex items-center px-1.5 overflow-hidden border border-black/20 hover:shadow-lg hover:z-10 transition-shadow font-medium"
-        style={{
-          left: Math.max(0, left),
-          width: Math.max(30, width),
-          backgroundColor: bgColor,
-          color: textColor,
-          top: 6,
-          height: 'calc(100% - 12px)'
-        }}
-        data-testid={`block-${block.id}`}
-      >
-        <span className="truncate">{block.school_name || 'École'}</span>
-      </div>
-      {viewMode === 'detailed' && block.hlp_after > 0 && (
-        <div
-          className="absolute rounded text-[10px] flex items-center justify-center bg-gray-500 text-white font-medium"
-          style={{
-            left: Math.max(0, left + width),
-            width: hlpAfterWidth,
-            top: 6,
-            height: 'calc(100% - 12px)'
-          }}
-        >
-          HLP
-        </div>
-      )}
-    </>
+  const tooltipContent = (
+    <div className="text-xs space-y-1">
+      <div className="font-bold">{block.school_name || 'École'}</div>
+      <div>Horaire: {block.start_time} - {block.end_time}</div>
+      {block.hlp_before > 0 && <div>HLP avant: {block.hlp_before} min</div>}
+      {block.hlp_after > 0 && <div>HLP après: {block.hlp_after} min</div>}
+      {block.days && <div>Jours: {block.days.join(', ')}</div>}
+    </div>
   );
-};
-
-const ShiftBlock = ({ shift, assignment, viewMode }) => {
-  if (!shift.blocks || shift.blocks.length === 0) return null;
   
-  const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
-  
-  const allTimes = shift.blocks.flatMap(b => [
-    timeToMinutes(b.start_time) - (b.hlp_before || 0),
-    timeToMinutes(b.end_time) + (b.hlp_after || 0)
-  ]);
-  const startMinutes = Math.min(...allTimes);
-  const endMinutes = Math.max(...allTimes);
-  
-  const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
-  const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
-  
-  if (left + width < 0 || left > TOTAL_SCHEDULE_WIDTH) return null;
-  
-  if (viewMode === 'abbreviated') {
+  // Mode détaillé: HLP séparés
+  if (viewMode === 'detailed' && !showHlpInColor) {
+    const hlpBeforeWidth = (hlpBeforeMinutes / 60) * PIXELS_PER_HOUR;
+    const hlpAfterWidth = (hlpAfterMinutes / 60) * PIXELS_PER_HOUR;
+    const mainLeft = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
+    const mainWidth = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
+    
     return (
-      <div
-        className="absolute rounded cursor-pointer bg-gray-600 text-white text-[11px] flex items-center justify-center px-2 font-semibold hover:shadow-lg transition-shadow"
-        style={{
-          left: Math.max(0, left),
-          width: Math.max(60, width),
-          top: 6,
-          height: 'calc(100% - 12px)'
-        }}
-        data-testid={`shift-${shift.id}`}
-      >
-        {assignment.circuit_number} {shift.name}
-      </div>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="absolute" style={{ left: Math.max(0, mainLeft - hlpBeforeWidth), top: 3, height: ROW_HEIGHT - 6 }}>
+              {hlpBeforeMinutes > 0 && (
+                <div
+                  className="absolute rounded-l text-[9px] flex items-center justify-center bg-gray-400 text-white font-medium"
+                  style={{ left: 0, width: hlpBeforeWidth, top: 0, height: '100%' }}
+                >
+                  HLP
+                </div>
+              )}
+              <div
+                className="absolute text-[10px] flex items-center px-1 overflow-hidden border border-black/20 font-medium cursor-pointer hover:shadow-md transition-shadow"
+                style={{
+                  left: hlpBeforeWidth,
+                  width: Math.max(25, mainWidth),
+                  backgroundColor: bgColor,
+                  color: textColor,
+                  top: 0,
+                  height: '100%',
+                  borderRadius: hlpBeforeMinutes > 0 ? '0' : '4px 0 0 4px',
+                }}
+              >
+                <span className="truncate">{block.school_name || 'École'}</span>
+              </div>
+              {hlpAfterMinutes > 0 && (
+                <div
+                  className="absolute rounded-r text-[9px] flex items-center justify-center bg-gray-400 text-white font-medium"
+                  style={{ left: hlpBeforeWidth + mainWidth, width: hlpAfterWidth, top: 0, height: '100%' }}
+                >
+                  HLP
+                </div>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">{tooltipContent}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   }
   
-  return shift.blocks.map((block) => (
+  // Mode complet: HLP inclus dans la couleur de l'école
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className="absolute rounded text-[10px] flex items-center px-1 overflow-hidden border border-black/20 font-medium cursor-pointer hover:shadow-md transition-shadow"
+            style={{
+              left: Math.max(0, left),
+              width: Math.max(25, width),
+              backgroundColor: bgColor,
+              color: textColor,
+              top: 3,
+              height: ROW_HEIGHT - 6
+            }}
+          >
+            <span className="truncate">{block.school_name || 'École'}</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top">{tooltipContent}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
+const ShiftBlock = ({ shift, assignment, viewMode, selectedDate }) => {
+  if (!shift.blocks || shift.blocks.length === 0) return null;
+  
+  const scheduleStartMinutes = SCHEDULE_START_HOUR * 60;
+  const dayLetter = getDayLetter(selectedDate);
+  
+  // Filter blocks for this day
+  const dayBlocks = shift.blocks.filter(b => 
+    !b.days || b.days.length === 0 || b.days.includes(dayLetter)
+  );
+  
+  if (dayBlocks.length === 0) return null;
+  
+  const showHlpInColor = viewMode === 'complete';
+  
+  if (viewMode === 'abbreviated') {
+    const allTimes = dayBlocks.flatMap(b => [
+      timeToMinutes(b.start_time) - (b.hlp_before || 0),
+      timeToMinutes(b.end_time) + (b.hlp_after || 0)
+    ]);
+    const startMinutes = Math.min(...allTimes);
+    const endMinutes = Math.max(...allTimes);
+    
+    const left = ((startMinutes - scheduleStartMinutes) / 60) * PIXELS_PER_HOUR;
+    const width = ((endMinutes - startMinutes) / 60) * PIXELS_PER_HOUR;
+    
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className="absolute rounded cursor-pointer bg-gray-600 text-white text-[10px] flex items-center justify-center px-1 font-semibold hover:shadow-md transition-shadow"
+              style={{
+                left: Math.max(0, left),
+                width: Math.max(50, width),
+                top: 3,
+                height: ROW_HEIGHT - 6
+              }}
+            >
+              {assignment.circuit_number} {shift.name}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <div className="text-xs">
+              <div className="font-bold">Circuit {assignment.circuit_number} - {shift.name}</div>
+              <div>{dayBlocks.length} bloc(s)</div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  
+  return dayBlocks.map((block) => (
     <ScheduleBlock 
       key={block.id} 
       block={block}
       viewMode={viewMode}
+      showHlpInColor={showHlpInColor}
     />
   ));
 };
@@ -184,25 +257,44 @@ const TemporaryTaskBlock = ({ task }) => {
   const textColor = getContrastColor(bgColor);
   
   return (
-    <div
-      className="absolute rounded cursor-pointer text-[11px] flex items-center px-1.5 overflow-hidden border-2 border-dashed hover:shadow-lg transition-shadow font-medium"
-      style={{
-        left: Math.max(0, left),
-        width: Math.max(30, width),
-        backgroundColor: bgColor,
-        color: textColor,
-        borderColor: textColor,
-        top: 6,
-        height: 'calc(100% - 12px)'
-      }}
-      data-testid={`temp-task-${task.id}`}
-    >
-      <span className="truncate">{task.name}</span>
-    </div>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className="absolute rounded cursor-pointer text-[10px] flex items-center px-1 overflow-hidden border-2 border-dashed hover:shadow-md transition-shadow font-medium"
+            style={{
+              left: Math.max(0, left),
+              width: Math.max(25, width),
+              backgroundColor: bgColor,
+              color: textColor,
+              borderColor: textColor,
+              top: 3,
+              height: ROW_HEIGHT - 6
+            }}
+          >
+            <span className="truncate">{task.name}</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <div className="text-xs">
+            <div className="font-bold">{task.name}</div>
+            <div>Horaire: {task.start_time} - {task.end_time}</div>
+            {task.school_name && <div>École: {task.school_name}</div>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 };
 
-// Section Remplacements - TOUJOURS VISIBLE
+// Get day letter from date
+const getDayLetter = (dateStr) => {
+  const d = new Date(dateStr + 'T00:00:00');
+  const days = ['D', 'L', 'M', 'W', 'J', 'V', 'S'];
+  return days[d.getDay()];
+};
+
+// Section Remplacements
 const ReplacementsSection = ({ replacements, onAssign, selectedDate }) => {
   const { unassigned_assignments = [], unassigned_tasks = [], absent_items = [] } = replacements || {};
   
@@ -211,102 +303,67 @@ const ReplacementsSection = ({ replacements, onAssign, selectedDate }) => {
   
   return (
     <div 
-      className={`mb-4 p-4 rounded-lg border-2 shadow-sm ${
+      className={`mb-3 p-3 rounded-lg border-2 shadow-sm ${
         totalReplacements > 0 
           ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/50 dark:border-amber-700' 
           : 'border-green-300 bg-green-50 dark:bg-green-950/50 dark:border-green-700'
       }`}
       data-testid="replacements-section"
     >
-      <div className="flex items-center gap-3 mb-2">
-        <div className={`p-2 rounded-full ${totalReplacements > 0 ? 'bg-amber-200 dark:bg-amber-800' : 'bg-green-200 dark:bg-green-800'}`}>
+      <div className="flex items-center gap-2">
+        <div className={`p-1.5 rounded-full ${totalReplacements > 0 ? 'bg-amber-200 dark:bg-amber-800' : 'bg-green-200 dark:bg-green-800'}`}>
           {totalReplacements > 0 ? (
-            <AlertTriangle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+            <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-300" />
           ) : (
-            <Info className="h-5 w-5 text-green-700 dark:text-green-300" />
+            <Info className="h-4 w-4 text-green-700 dark:text-green-300" />
           )}
         </div>
-        <div>
-          <h3 className={`font-bold ${totalReplacements > 0 ? 'text-amber-900 dark:text-amber-100' : 'text-green-900 dark:text-green-100'}`}>
-            {totalReplacements > 0 ? 'Remplacements requis' : 'Remplacements'}
-          </h3>
-          <p className={`text-xs ${totalReplacements > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
-            {totalReplacements > 0 
-              ? `${totalReplacements} élément(s) à assigner pour ${formatDate(selectedDate)}`
-              : `Aucun remplacement requis pour ${formatDate(selectedDate)}`
-            }
-          </p>
+        <div className="flex-1">
+          <span className={`font-semibold text-sm ${totalReplacements > 0 ? 'text-amber-900 dark:text-amber-100' : 'text-green-900 dark:text-green-100'}`}>
+            {totalReplacements > 0 ? `${totalReplacements} remplacement(s) requis` : 'Aucun remplacement requis'}
+          </span>
         </div>
         {totalReplacements > 0 && (
-          <Badge className="ml-auto bg-amber-500 text-white text-lg px-3">
+          <Badge className="bg-amber-500 text-white px-2">
             {totalReplacements}
           </Badge>
         )}
       </div>
       
       {totalReplacements > 0 && (
-        <div className="space-y-2 mt-3">
-          {unassigned_assignments.length > 0 && (
-            <div>
-              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
-                Circuits sans conducteur:
-              </span>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {unassigned_assignments.map(a => (
-                  <Badge 
-                    key={a.id} 
-                    variant="outline" 
-                    className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200"
-                    onClick={() => onAssign(a, 'assignment')}
-                  >
-                    <Bus className="h-3 w-3 mr-1" />
-                    Circuit {a.circuit_number}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {unassigned_tasks.length > 0 && (
-            <div>
-              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">
-                Tâches sans conducteur:
-              </span>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {unassigned_tasks.map(t => (
-                  <Badge 
-                    key={t.id} 
-                    variant="outline" 
-                    className="cursor-pointer bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-dashed border-amber-400 text-amber-800 dark:text-amber-200"
-                    onClick={() => onAssign(t, 'task')}
-                  >
-                    {t.name} ({t.start_time}-{t.end_time})
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {todayAbsentItems.length > 0 && (
-            <div>
-              <span className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase">
-                Absences à remplacer:
-              </span>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {todayAbsentItems.map((item, idx) => (
-                  <Badge 
-                    key={`absent-${idx}`} 
-                    variant="outline" 
-                    className="cursor-pointer bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 border-red-400 text-red-800 dark:text-red-200"
-                    onClick={() => onAssign(item.data, 'assignment')}
-                  >
-                    <UserX className="h-3 w-3 mr-1" />
-                    {item.data.circuit_number} ({item.original_employee})
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {unassigned_assignments.map(a => (
+            <Badge 
+              key={a.id} 
+              variant="outline" 
+              className="cursor-pointer text-xs bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-amber-400"
+              onClick={() => onAssign(a, 'assignment')}
+            >
+              <Bus className="h-3 w-3 mr-1" />
+              {a.circuit_number}
+            </Badge>
+          ))}
+          {unassigned_tasks.map(t => (
+            <Badge 
+              key={t.id} 
+              variant="outline" 
+              className="cursor-pointer text-xs bg-white dark:bg-gray-800 hover:bg-amber-100 dark:hover:bg-amber-900 border-dashed border-amber-400"
+              onClick={() => onAssign(t, 'task')}
+            >
+              {t.name}
+            </Badge>
+          ))}
+          {todayAbsentItems.map((item, idx) => (
+            <Badge 
+              key={`absent-${idx}`} 
+              variant="outline" 
+              className="cursor-pointer text-xs bg-red-50 dark:bg-red-900/30 hover:bg-red-100 border-red-400"
+              onClick={() => onAssign(item.data, 'assignment')}
+            >
+              <UserX className="h-3 w-3 mr-1" />
+              {item.data.circuit_number}
+            </Badge>
+          ))}
         </div>
       )}
     </div>
@@ -341,23 +398,19 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showTempTaskModal, setShowTempTaskModal] = useState(false);
   
-  // Ref for synchronized scrolling
-  const scrollContainerRef = useRef(null);
+  // Refs for synchronized scrolling
+  const topScrollRef = useRef(null);
+  const bottomScrollRef = useRef(null);
   const headerScrollRef = useRef(null);
-  const rowScrollRefs = useRef([]);
+  const bodyScrollRef = useRef(null);
   
-  const handleScheduleScroll = (e) => {
+  // Synchronize all horizontal scrolls
+  const handleScroll = (source) => (e) => {
     const scrollLeft = e.target.scrollLeft;
-    
-    // Sync header
-    if (headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = scrollLeft;
-    }
-    
-    // Sync all rows
-    rowScrollRefs.current.forEach(ref => {
-      if (ref && ref !== e.target) {
-        ref.scrollLeft = scrollLeft;
+    const refs = [topScrollRef, bottomScrollRef, headerScrollRef, bodyScrollRef];
+    refs.forEach(ref => {
+      if (ref.current && ref.current !== e.target) {
+        ref.current.scrollLeft = scrollLeft;
       }
     });
   };
@@ -396,6 +449,21 @@ export default function DashboardPage() {
     fetchData();
   }, [fetchData]);
   
+  // Sort employees by circuit number, then those without assignments
+  const sortedEmployees = useMemo(() => {
+    return [...employees].sort((a, b) => {
+      const aAssignments = assignments.filter(ass => ass.employee_id === a.id);
+      const bAssignments = assignments.filter(ass => ass.employee_id === b.id);
+      
+      const aCircuit = aAssignments.length > 0 ? Math.min(...aAssignments.map(ass => ass.circuit_number)) : 'ZZZZ';
+      const bCircuit = bAssignments.length > 0 ? Math.min(...bAssignments.map(ass => ass.circuit_number)) : 'ZZZZ';
+      
+      if (aCircuit < bCircuit) return -1;
+      if (aCircuit > bCircuit) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [employees, assignments]);
+  
   const goToPreviousWeek = () => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() - 7);
@@ -414,7 +482,7 @@ export default function DashboardPage() {
   };
   
   const handleAssign = async (item, type) => {
-    toast.info('Fonctionnalité d\'assignation rapide à venir - Utilisez l\'onglet Assignations');
+    toast.info('Utilisez l\'onglet Assignations pour assigner un conducteur');
   };
   
   const handleTempTaskCreated = () => {
@@ -423,12 +491,16 @@ export default function DashboardPage() {
     toast.success('Tâche temporaire créée');
   };
   
-  const isEmployeeAbsent = (employeeId) => {
-    return absences.some(a => 
-      a.employee_id === employeeId &&
-      a.start_date <= selectedDate &&
-      a.end_date >= selectedDate
-    );
+  const isEmployeeAbsent = (employeeId, shiftType = null) => {
+    return absences.some(a => {
+      if (a.employee_id !== employeeId) return false;
+      if (!(a.start_date <= selectedDate && a.end_date >= selectedDate)) return false;
+      // If shift_types is empty, absent for all
+      if (!a.shift_types || a.shift_types.length === 0) return true;
+      // If shiftType provided, check if in list
+      if (shiftType) return a.shift_types.includes(shiftType);
+      return true;
+    });
   };
   
   if (loading) {
@@ -453,20 +525,10 @@ export default function DashboardPage() {
             <span className="text-sm text-muted-foreground hidden md:inline">
               {admin?.name}
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              data-testid="theme-toggle"
-            >
+            <Button variant="ghost" size="icon" onClick={toggleTheme} data-testid="theme-toggle">
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              data-testid="logout-button"
-            >
+            <Button variant="ghost" size="icon" onClick={handleLogout} data-testid="logout-button">
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
@@ -511,8 +573,8 @@ export default function DashboardPage() {
       <main className="p-4">
         {activeTab === 'schedule' && (
           <>
-            {/* Schedule Controls */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            {/* Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" onClick={goToPreviousWeek}>
                   <ChevronLeft className="h-4 w-4" />
@@ -525,7 +587,6 @@ export default function DashboardPage() {
                       size="sm"
                       onClick={() => setSelectedDate(date)}
                       className={date === selectedDate ? 'bg-[#4CAF50] hover:bg-[#43A047]' : ''}
-                      data-testid={`date-btn-${date}`}
                     >
                       {formatDate(date)}
                     </Button>
@@ -538,115 +599,90 @@ export default function DashboardPage() {
               
               <div className="flex items-center gap-2">
                 <div className="flex rounded-md border border-input overflow-hidden">
-                  <button
-                    className={`px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'detailed' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
-                    onClick={() => setViewMode('detailed')}
-                    data-testid="view-detailed"
-                  >
-                    Détaillé
-                  </button>
-                  <button
-                    className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-input ${viewMode === 'complete' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
-                    onClick={() => setViewMode('complete')}
-                    data-testid="view-complete"
-                  >
-                    Complet
-                  </button>
-                  <button
-                    className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-input ${viewMode === 'abbreviated' ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
-                    onClick={() => setViewMode('abbreviated')}
-                    data-testid="view-abbreviated"
-                  >
-                    Abrégé
-                  </button>
+                  {['detailed', 'complete', 'abbreviated'].map((mode, idx) => (
+                    <button
+                      key={mode}
+                      className={`px-3 py-1.5 text-sm font-medium transition-colors ${idx > 0 ? 'border-l border-input' : ''} ${viewMode === mode ? 'bg-[#4CAF50] text-white' : 'bg-background hover:bg-muted'}`}
+                      onClick={() => setViewMode(mode)}
+                    >
+                      {mode === 'detailed' ? 'Détaillé' : mode === 'complete' ? 'Complet' : 'Abrégé'}
+                    </button>
+                  ))}
                 </div>
                 
-                <Button 
-                  onClick={() => setShowTempTaskModal(true)}
-                  className="bg-[#4CAF50] hover:bg-[#43A047]"
-                  data-testid="add-temp-task"
-                >
+                <Button onClick={() => setShowTempTaskModal(true)} className="bg-[#4CAF50] hover:bg-[#43A047]">
                   <Plus className="h-4 w-4 mr-1" />
-                  Tâche temporaire
+                  Tâche temp.
                 </Button>
               </div>
             </div>
             
-            {/* Section Remplacements - TOUJOURS VISIBLE */}
-            <ReplacementsSection 
-              replacements={replacements} 
-              onAssign={handleAssign}
-              selectedDate={selectedDate}
-            />
+            {/* Replacements */}
+            <ReplacementsSection replacements={replacements} onAssign={handleAssign} selectedDate={selectedDate} />
             
             {/* Schedule Grid */}
             <div className="border border-border rounded-lg overflow-hidden bg-card">
-              {/* Header Row with Time */}
+              {/* Top scrollbar */}
+              <div className="flex border-b border-border bg-muted/30">
+                <div style={{ width: FIXED_LEFT_WIDTH }} className="flex-shrink-0" />
+                <div 
+                  ref={topScrollRef}
+                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  onScroll={handleScroll('top')}
+                  style={{ minWidth: 0, height: 12 }}
+                >
+                  <div style={{ width: TOTAL_SCHEDULE_WIDTH, height: 1 }} />
+                </div>
+                <div style={{ width: FIXED_RIGHT_WIDTH }} className="flex-shrink-0" />
+              </div>
+              
+              {/* Header */}
               <div className="flex border-b-2 border-border bg-muted/70">
-                {/* Fixed Left Header */}
-                <div className="flex-shrink-0 flex bg-muted/70" style={{ width: FIXED_LEFT_WIDTH }}>
-                  <div 
-                    className="font-semibold text-sm px-3 py-2.5 border-r border-border flex items-center"
-                    style={{ width: DRIVER_COL_WIDTH }}
-                  >
+                <div className="flex-shrink-0 flex" style={{ width: FIXED_LEFT_WIDTH }}>
+                  <div className="font-semibold text-sm px-2 py-2 border-r border-border flex items-center" style={{ width: DRIVER_COL_WIDTH }}>
                     Conducteur
                   </div>
-                  <div 
-                    className="font-semibold text-sm px-2 py-2.5 border-r-2 border-border flex items-center justify-center"
-                    style={{ width: CIRCUIT_COL_WIDTH }}
-                  >
+                  <div className="font-semibold text-sm px-1 py-2 border-r-2 border-border flex items-center justify-center" style={{ width: CIRCUIT_COL_WIDTH }}>
                     Circuit
                   </div>
                 </div>
                 
-                {/* Scrollable Time Header - Synchronized with body */}
                 <div 
                   ref={headerScrollRef}
-                  className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
+                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  onScroll={handleScroll('header')}
                   style={{ minWidth: 0 }}
-                  onScroll={handleScheduleScroll}
                 >
-                  <div 
-                    className="relative h-10 bg-muted/70"
-                    style={{ width: TOTAL_SCHEDULE_WIDTH }}
-                  >
+                  <div className="relative h-9" style={{ width: TOTAL_SCHEDULE_WIDTH }}>
                     {TIME_MARKERS.map((marker, idx) => (
                       <div 
                         key={marker.hour}
-                        className="absolute top-0 h-full flex items-center justify-start border-l border-border/70"
-                        style={{ 
-                          left: marker.position,
-                          width: idx < TIME_MARKERS.length - 1 ? PIXELS_PER_HOUR : 'auto'
-                        }}
+                        className="absolute top-0 h-full flex items-center border-l border-border/70"
+                        style={{ left: marker.position, width: idx < TIME_MARKERS.length - 1 ? PIXELS_PER_HOUR : 'auto' }}
                       >
-                        <span className="pl-1 text-xs font-semibold text-foreground whitespace-nowrap">
-                          {marker.label}
-                        </span>
+                        <span className="pl-1 text-xs font-semibold">{marker.label}</span>
                       </div>
                     ))}
                   </div>
                 </div>
                 
-                {/* Fixed Right Header */}
-                <div className="flex-shrink-0 flex bg-muted/70" style={{ width: FIXED_RIGHT_WIDTH }}>
-                  <div 
-                    className="font-semibold text-sm px-2 py-2.5 border-l-2 border-border flex items-center justify-center"
-                    style={{ width: DAY_HOURS_COL_WIDTH }}
-                  >
+                <div className="flex-shrink-0 flex" style={{ width: FIXED_RIGHT_WIDTH }}>
+                  <div className="font-semibold text-xs px-1 py-2 border-l-2 border-border flex items-center justify-center" style={{ width: DAY_HOURS_COL_WIDTH }}>
                     Jour
                   </div>
-                  <div 
-                    className="font-semibold text-sm px-2 py-2.5 border-l border-border flex items-center justify-center"
-                    style={{ width: WEEK_HOURS_COL_WIDTH }}
-                  >
+                  <div className="font-semibold text-xs px-1 py-2 border-l border-border flex items-center justify-center" style={{ width: WEEK_HOURS_COL_WIDTH }}>
                     Semaine
                   </div>
                 </div>
               </div>
               
-              {/* Scrollable Body */}
-              <div className="max-h-[calc(100vh-420px)] overflow-y-auto">
-                {employees.map((emp, empIdx) => {
+              {/* Body */}
+              <div 
+                ref={bodyScrollRef}
+                className="max-h-[calc(100vh-380px)] overflow-auto"
+                onScroll={handleScroll('body')}
+              >
+                {sortedEmployees.map((emp) => {
                   const empSchedule = scheduleData.find(s => s.employee?.id === emp.id);
                   const dailyMinutes = empSchedule?.daily_hours?.[selectedDate] || 0;
                   const weeklyMinutes = empSchedule?.weekly_total || 0;
@@ -669,26 +705,21 @@ export default function DashboardPage() {
                   return (
                     <div 
                       key={emp.id} 
-                      className={`flex border-b border-border transition-colors ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : 'hover:bg-muted/30'}`}
-                      data-testid={`driver-row-${emp.id}`}
+                      className={`flex border-b border-border transition-colors ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : 'hover:bg-muted/30'}`}
+                      style={{ height: ROW_HEIGHT }}
                     >
-                      {/* Fixed Left Columns */}
                       <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_LEFT_WIDTH }}>
                         <div 
-                          className={`px-3 py-2 border-r border-border flex items-center gap-2 ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
+                          className={`px-2 border-r border-border flex items-center gap-1 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`}
                           style={{ width: DRIVER_COL_WIDTH }}
                         >
                           <span className={`font-medium text-sm truncate ${isAbsent ? 'text-red-600 dark:text-red-400' : ''}`}>
                             {emp.name}
                           </span>
-                          {isAbsent && (
-                            <Badge variant="destructive" className="text-[10px] px-1 py-0">
-                              Absent
-                            </Badge>
-                          )}
+                          {isAbsent && <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">ABS</Badge>}
                         </div>
                         <div 
-                          className={`px-2 py-2 border-r-2 border-border flex items-center justify-center ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
+                          className={`px-1 border-r-2 border-border flex items-center justify-center ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`}
                           style={{ width: CIRCUIT_COL_WIDTH }}
                         >
                           <span className="text-xs text-muted-foreground font-medium">
@@ -697,36 +728,15 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       
-                      {/* Scrollable Schedule Area */}
-                      <div 
-                        ref={el => rowScrollRefs.current[empIdx] = el}
-                        className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
-                        style={{ minWidth: 0 }}
-                        onScroll={handleScheduleScroll}
-                      >
-                        <div 
-                          className="relative min-h-[52px]"
-                          style={{ width: TOTAL_SCHEDULE_WIDTH }}
-                        >
-                          {/* Hour grid lines - aligned with headers */}
+                      <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+                        <div className="relative h-full" style={{ width: TOTAL_SCHEDULE_WIDTH }}>
                           {TIME_MARKERS.map((marker) => (
-                            <div
-                              key={marker.hour}
-                              className="absolute top-0 bottom-0 border-l border-border/50"
-                              style={{ left: marker.position }}
-                            />
+                            <div key={marker.hour} className="absolute top-0 bottom-0 border-l border-border/40" style={{ left: marker.position }} />
                           ))}
-                          
-                          {/* Half-hour markers */}
                           {TIME_MARKERS.slice(0, -1).map((marker) => (
-                            <div
-                              key={`half-${marker.hour}`}
-                              className="absolute top-0 bottom-0 border-l border-dashed border-border/30"
-                              style={{ left: marker.position + PIXELS_PER_HOUR / 2 }}
-                            />
+                            <div key={`half-${marker.hour}`} className="absolute top-0 bottom-0 border-l border-dashed border-border/20" style={{ left: marker.position + PIXELS_PER_HOUR / 2 }} />
                           ))}
                           
-                          {/* Assignments */}
                           {dayAssignments.map(assignment => 
                             assignment.shifts?.map(shift => (
                               <ShiftBlock
@@ -734,18 +744,18 @@ export default function DashboardPage() {
                                 shift={shift}
                                 assignment={assignment}
                                 viewMode={viewMode}
+                                selectedDate={selectedDate}
                               />
                             ))
                           )}
                           
-                          {/* Temporary tasks */}
                           {dayTasks.map(task => (
                             <TemporaryTaskBlock key={task.id} task={task} />
                           ))}
                           
                           {isAbsent && (
                             <div className="absolute inset-0 flex items-center justify-center">
-                              <span className="text-red-500 dark:text-red-400 text-sm font-medium bg-red-100 dark:bg-red-900/50 px-3 py-1 rounded">
+                              <span className="text-red-500 text-xs font-medium bg-red-100 dark:bg-red-900/50 px-2 py-0.5 rounded">
                                 Absent
                               </span>
                             </div>
@@ -753,79 +763,56 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       
-                      {/* Fixed Right Columns */}
                       <div className="flex-shrink-0 flex bg-background" style={{ width: FIXED_RIGHT_WIDTH }}>
                         <div 
-                          className={`px-2 py-2 border-l-2 border-border flex items-center justify-center tabular-nums text-sm ${isAbsent ? 'bg-red-50 dark:bg-red-950/30 text-muted-foreground' : ''}`}
+                          className={`px-1 border-l-2 border-border flex items-center justify-center tabular-nums text-xs ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20 text-muted-foreground' : ''}`}
                           style={{ width: DAY_HOURS_COL_WIDTH }}
                         >
                           {isAbsent ? '-' : formatHoursMinutes(dailyMinutes)}
                         </div>
                         <div 
-                          className={`px-2 py-2 border-l border-border flex items-center justify-center gap-1 ${isAbsent ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
+                          className={`px-1 border-l border-border flex items-center justify-center gap-0.5 ${isAbsent ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`}
                           style={{ width: WEEK_HOURS_COL_WIDTH }}
                         >
-                          <span className="tabular-nums text-sm font-medium">
-                            {formatHoursMinutes(weeklyMinutes)}
-                          </span>
-                          {isOvertime && (
-                            <span className="text-red-500" title="Plus de 39h/semaine">
-                              <AlertTriangle className="h-4 w-4" />
-                            </span>
-                          )}
-                          {isUndertime && (
-                            <span className="text-amber-500" title="Moins de 15h/semaine">
-                              <AlertTriangle className="h-4 w-4" />
-                            </span>
-                          )}
+                          <span className="tabular-nums text-xs font-medium">{formatHoursMinutes(weeklyMinutes)}</span>
+                          {isOvertime && <AlertTriangle className="h-3 w-3 text-red-500" />}
+                          {isUndertime && <AlertTriangle className="h-3 w-3 text-amber-500" />}
                         </div>
                       </div>
                     </div>
                   );
                 })}
                 
-                {employees.length === 0 && (
+                {sortedEmployees.length === 0 && (
                   <div className="p-8 text-center text-muted-foreground">
                     Aucun employé. Ajoutez des employés dans l'onglet "Employés".
                   </div>
                 )}
               </div>
+              
+              {/* Bottom scrollbar */}
+              <div className="flex border-t border-border bg-muted/30">
+                <div style={{ width: FIXED_LEFT_WIDTH }} className="flex-shrink-0" />
+                <div 
+                  ref={bottomScrollRef}
+                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  onScroll={handleScroll('bottom')}
+                  style={{ minWidth: 0, height: 12 }}
+                >
+                  <div style={{ width: TOTAL_SCHEDULE_WIDTH, height: 1 }} />
+                </div>
+                <div style={{ width: FIXED_RIGHT_WIDTH }} className="flex-shrink-0" />
+              </div>
             </div>
           </>
         )}
         
-        {activeTab === 'employees' && (
-          <EmployeesPage employees={employees} onUpdate={fetchData} />
-        )}
-        
-        {activeTab === 'schools' && (
-          <SchoolsPage schools={schools} onUpdate={fetchData} />
-        )}
-        
-        {activeTab === 'assignments' && (
-          <AssignmentsPage 
-            assignments={assignments} 
-            employees={employees} 
-            schools={schools}
-            onUpdate={fetchData} 
-          />
-        )}
-        
-        {activeTab === 'absences' && (
-          <AbsencesPage 
-            absences={absences} 
-            employees={employees}
-            onUpdate={fetchData} 
-          />
-        )}
-        
-        {activeTab === 'holidays' && (
-          <HolidaysPage holidays={holidays} onUpdate={fetchData} />
-        )}
-        
-        {activeTab === 'reports' && (
-          <ReportsPage employees={employees} />
-        )}
+        {activeTab === 'employees' && <EmployeesPage employees={employees} onUpdate={fetchData} />}
+        {activeTab === 'schools' && <SchoolsPage schools={schools} onUpdate={fetchData} />}
+        {activeTab === 'assignments' && <AssignmentsPage assignments={assignments} employees={employees} schools={schools} onUpdate={fetchData} />}
+        {activeTab === 'absences' && <AbsencesPage absences={absences} employees={employees} onUpdate={fetchData} />}
+        {activeTab === 'holidays' && <HolidaysPage holidays={holidays} onUpdate={fetchData} />}
+        {activeTab === 'reports' && <ReportsPage employees={employees} />}
       </main>
       
       <TemporaryTaskModal
