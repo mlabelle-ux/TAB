@@ -367,10 +367,11 @@ async def create_employee(data: EmployeeCreate):
         if existing:
             raise HTTPException(status_code=400, detail="Ce téléphone existe déjà")
     
+    # Permettre les doublons de berline si l'un des deux est inactif
     if data.berline:
-        existing = await db.employees.find_one({"berline": data.berline}, {"_id": 0})
-        if existing:
-            raise HTTPException(status_code=400, detail="Cette berline existe déjà")
+        existing = await db.employees.find_one({"berline": data.berline, "is_inactive": {"$ne": True}}, {"_id": 0})
+        if existing and not data.is_inactive:
+            raise HTTPException(status_code=400, detail="Cette berline est déjà utilisée par un employé actif")
     
     employee = Employee(**data.model_dump())
     doc = employee.model_dump()
@@ -396,10 +397,15 @@ async def update_employee(employee_id: str, data: EmployeeCreate):
         if existing:
             raise HTTPException(status_code=400, detail="Ce téléphone existe déjà")
     
+    # Permettre les doublons de berline si l'un des deux est inactif
     if data.berline:
-        existing = await db.employees.find_one({"berline": data.berline, "id": {"$ne": employee_id}}, {"_id": 0})
-        if existing:
-            raise HTTPException(status_code=400, detail="Cette berline existe déjà")
+        existing = await db.employees.find_one({
+            "berline": data.berline, 
+            "id": {"$ne": employee_id},
+            "is_inactive": {"$ne": True}
+        }, {"_id": 0})
+        if existing and not data.is_inactive:
+            raise HTTPException(status_code=400, detail="Cette berline est déjà utilisée par un employé actif")
     
     result = await db.employees.update_one(
         {"id": employee_id},
